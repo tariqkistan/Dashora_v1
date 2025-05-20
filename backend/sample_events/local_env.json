@@ -1,0 +1,8 @@
+{
+  "METRICS_TABLE_NAME": "dashora-metrics-local",
+  "DOMAINS_TABLE_NAME": "dashora-domains-local",
+  "USERS_TABLE_NAME": "dashora-users-local",
+  "JWT_SECRET": "dashora-local-test-secret",
+  "AWS_REGION": "us-east-1",
+  "MOCK_AWS_SERVICES": "true"
+} 

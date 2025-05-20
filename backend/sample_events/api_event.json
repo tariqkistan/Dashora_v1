@@ -1,0 +1,10 @@
+{
+  "httpMethod": "GET",
+  "path": "/metrics/example-store.com",
+  "queryStringParameters": {
+    "days": "7"
+  },
+  "headers": {
+    "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoidGVzdC11c2VyIiwiaWF0IjoxNjE5MTIzNDU2LCJleHAiOjE2MTkxMjcwNTZ9.F1yrBMIJrVtO7FYf3y-r9aKVIQCB1fy5Jv9CDdrzFGc"
+  }
+} 

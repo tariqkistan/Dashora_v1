@@ -1,0 +1,575 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import {
+  Box,
+  Container,
+  Select,
+  Heading,
+  Text,
+  SimpleGrid,
+  Stat,
+  StatLabel,
+  StatNumber,
+  StatHelpText,
+  StatArrow,
+  Spinner,
+  Alert,
+  AlertIcon,
+  Card,
+  CardHeader,
+  CardBody,
+  FormControl,
+  FormLabel,
+  Center,
+  Grid,
+  GridItem,
+  useColorModeValue,
+  Tabs,
+  TabList,
+  Tab,
+  TabPanels,
+  TabPanel,
+} from '@chakra-ui/react';
+import {
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import { domainService, metricsService } from '@/services/api';
+import { useChakraColor } from '@/components/ui/theme-utils';
+
+interface Domain {
+  domain: string;
+  name: string;
+  woocommerce_enabled: boolean;
+  ga_enabled: boolean;
+}
+
+interface Metric {
+  domain: string;
+  timestamp: number;
+  pageviews: number;
+  visitors: number;
+  orders: number;
+  revenue: number;
+}
+
+export default function AnalyticsPage() {
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [selectedDomain, setSelectedDomain] = useState<string>('');
+  const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  // Color mode values
+  const cardBg = useColorModeValue('white', 'navy.500');
+  const borderColor = useColorModeValue('gray.200', 'navy.400');
+  const textColor = useColorModeValue('gray.600', 'gray.100');
+  const primaryColor = useColorModeValue('brand.500', 'teal.200');
+  const secondaryColor = useColorModeValue('green.500', 'teal.300');
+  const tertiaryColor = useColorModeValue('purple.500', 'teal.200');
+  const quaternaryColor = useColorModeValue('orange.500', 'teal.400');
+  
+  // Get raw color values for charts
+  const tealColor = useChakraColor('teal.200'); // #81e6d9
+  const tealLighterColor = useChakraColor('teal.300');
+  const tealDarkerColor = useChakraColor('teal.400');
+  const gridColorValue = useChakraColor(useColorModeValue('gray.200', 'navy.400'));
+  const axisColorValue = useChakraColor(useColorModeValue('gray.500', 'gray.300'));
+  const cardBgValue = useChakraColor(cardBg);
+  const borderColorValue = useChakraColor(borderColor);
+
+  // Only render UI after hydration to avoid mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    const fetchDomains = async () => {
+      try {
+        const { domains } = await domainService.getDomains();
+        setDomains(domains);
+        if (domains.length > 0) {
+          setSelectedDomain(domains[0].domain);
+        }
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Failed to fetch domains');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (mounted) {
+      fetchDomains();
+    }
+  }, [mounted]);
+
+  useEffect(() => {
+    const fetchMetrics = async () => {
+      if (!selectedDomain) return;
+
+      try {
+        const { metrics } = await metricsService.getMetrics(selectedDomain);
+        setMetrics(metrics);
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Failed to fetch metrics');
+      }
+    };
+
+    if (mounted && selectedDomain) {
+      fetchMetrics();
+    }
+  }, [selectedDomain, mounted]);
+
+  // Calculate trends
+  const calculateTrend = (metricName: keyof Metric) => {
+    if (metrics.length < 2) return { value: 0, isIncrease: true };
+    
+    const current = metrics[metrics.length - 1][metricName] as number;
+    const previous = metrics[metrics.length - 2][metricName] as number;
+    
+    const percentChange = ((current - previous) / previous) * 100;
+    return {
+      value: Math.abs(percentChange).toFixed(1),
+      isIncrease: percentChange >= 0
+    };
+  };
+
+  // Format date for display
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp * 1000).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  // Format data for charts
+  const chartData = metrics.map(metric => ({
+    ...metric,
+    date: formatDate(metric.timestamp)
+  }));
+
+  // Create conversion rate data
+  const conversionData = chartData.map(item => ({
+    ...item,
+    conversionRate: ((item.orders / item.visitors) * 100).toFixed(2)
+  }));
+
+  // Get the latest data for the pie chart
+  const getLatestMetrics = () => {
+    if (metrics.length === 0) return null;
+    return metrics[metrics.length - 1];
+  };
+
+  // Show a loading state until client-side hydration is complete
+  if (!mounted || loading) {
+    return (
+      <Center h="100vh">
+        <Spinner size="xl" color="brand.500" />
+      </Center>
+    );
+  }
+
+  const latestMetrics = getLatestMetrics();
+  
+  // Calculate distribution for pie chart
+  const pieData = latestMetrics ? [
+    { name: 'Converted', value: latestMetrics.orders },
+    { name: 'Non-Converted', value: latestMetrics.visitors - latestMetrics.orders }
+  ] : [];
+  
+  const COLORS = [primaryColor, useColorModeValue('gray.300', 'gray.600')];
+
+  return (
+    <Box>
+      {error && (
+        <Alert status="error" mb={6}>
+          <AlertIcon />
+          {error}
+        </Alert>
+      )}
+
+      <Box mb={6}>
+        <FormControl>
+          <FormLabel id="domain-select-analytics-label" htmlFor="domain-select-analytics" fontWeight="medium">Select Domain</FormLabel>
+          <Select
+            id="domain-select-analytics"
+            value={selectedDomain}
+            onChange={(e) => setSelectedDomain(e.target.value)}
+            bg={cardBg}
+            borderColor={borderColor}
+            aria-labelledby="domain-select-analytics-label"
+          >
+            {domains.map((domain) => (
+              <option key={domain.domain} value={domain.domain}>
+                {domain.name} ({domain.domain})
+              </option>
+            ))}
+          </Select>
+        </FormControl>
+      </Box>
+
+      {/* Summary metrics */}
+      <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6} mb={8}>
+        <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+          <CardBody>
+            <Stat>
+              <StatLabel fontSize="sm" fontWeight="medium" color={textColor}>Revenue</StatLabel>
+              <StatNumber fontSize="2xl" fontWeight="bold" color={useColorModeValue('gray.900', 'white')}>
+                ${latestMetrics?.revenue.toFixed(2) || '0.00'}
+              </StatNumber>
+              {metrics.length > 1 && (
+                <StatHelpText mb={0}>
+                  <StatArrow type={calculateTrend('revenue').isIncrease ? 'increase' : 'decrease'} />
+                  {calculateTrend('revenue').value}%
+                </StatHelpText>
+              )}
+            </Stat>
+          </CardBody>
+        </Card>
+
+        <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+          <CardBody>
+            <Stat>
+              <StatLabel fontSize="sm" fontWeight="medium" color={textColor}>Orders</StatLabel>
+              <StatNumber fontSize="2xl" fontWeight="bold" color={useColorModeValue('gray.900', 'white')}>
+                {latestMetrics?.orders || 0}
+              </StatNumber>
+              {metrics.length > 1 && (
+                <StatHelpText mb={0}>
+                  <StatArrow type={calculateTrend('orders').isIncrease ? 'increase' : 'decrease'} />
+                  {calculateTrend('orders').value}%
+                </StatHelpText>
+              )}
+            </Stat>
+          </CardBody>
+        </Card>
+
+        <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+          <CardBody>
+            <Stat>
+              <StatLabel fontSize="sm" fontWeight="medium" color={textColor}>Page Views</StatLabel>
+              <StatNumber fontSize="2xl" fontWeight="bold" color={useColorModeValue('gray.900', 'white')}>
+                {latestMetrics?.pageviews || 0}
+              </StatNumber>
+              {metrics.length > 1 && (
+                <StatHelpText mb={0}>
+                  <StatArrow type={calculateTrend('pageviews').isIncrease ? 'increase' : 'decrease'} />
+                  {calculateTrend('pageviews').value}%
+                </StatHelpText>
+              )}
+            </Stat>
+          </CardBody>
+        </Card>
+
+        <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+          <CardBody>
+            <Stat>
+              <StatLabel fontSize="sm" fontWeight="medium" color={textColor}>Visitors</StatLabel>
+              <StatNumber fontSize="2xl" fontWeight="bold" color={useColorModeValue('gray.900', 'white')}>
+                {latestMetrics?.visitors || 0}
+              </StatNumber>
+              {metrics.length > 1 && (
+                <StatHelpText mb={0}>
+                  <StatArrow type={calculateTrend('visitors').isIncrease ? 'increase' : 'decrease'} />
+                  {calculateTrend('visitors').value}%
+                </StatHelpText>
+              )}
+            </Stat>
+          </CardBody>
+        </Card>
+      </SimpleGrid>
+
+      <Tabs variant="enclosed" colorScheme="brand" mb={8}>
+        <TabList>
+          <Tab>Performance</Tab>
+          <Tab>Visitors</Tab>
+          <Tab>Conversions</Tab>
+        </TabList>
+        
+        <TabPanels>
+          <TabPanel px={0}>
+            {/* Revenue over time */}
+            <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor} mb={6}>
+              <CardHeader pb={0}>
+                <Heading size="md" color={useColorModeValue('gray.900', 'white')}>Revenue Over Time</Heading>
+              </CardHeader>
+              <CardBody>
+                <Box h="300px" w="100%">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart
+                      data={chartData}
+                      margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                    >
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={tealColor} stopOpacity={0.8} />
+                          <stop offset="95%" stopColor={tealColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColorValue} />
+                      <XAxis dataKey="date" stroke={axisColorValue} />
+                      <YAxis stroke={axisColorValue} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: cardBgValue,
+                          borderColor: borderColorValue,
+                        }}
+                        formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="revenue" 
+                        stroke={tealColor} 
+                        fillOpacity={1} 
+                        fill="url(#colorRevenue)" 
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </Box>
+              </CardBody>
+            </Card>
+          </TabPanel>
+          
+          <TabPanel px={0}>
+            {/* Visitors & Page Views */}
+            <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor} mb={6}>
+              <CardHeader pb={0}>
+                <Heading size="md" color={useColorModeValue('gray.900', 'white')}>Visitor Trends</Heading>
+              </CardHeader>
+              <CardBody>
+                <Box h="300px" w="100%">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColorValue} />
+                      <XAxis dataKey="date" stroke={axisColorValue} />
+                      <YAxis stroke={axisColorValue} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: cardBgValue,
+                          borderColor: borderColorValue,
+                        }}
+                      />
+                      <Legend />
+                      <Line 
+                        type="monotone" 
+                        dataKey="visitors" 
+                        stroke={tealColor} 
+                        name="Visitors" 
+                        activeDot={{ r: 8 }}
+                        strokeWidth={2}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="pageviews" 
+                        stroke={tealLighterColor} 
+                        name="Page Views"
+                        strokeWidth={2}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+              </CardBody>
+            </Card>
+            
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+              <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+                <CardHeader pb={0}>
+                  <Heading size="md" color={useColorModeValue('gray.900', 'white')}>Pages Per Visitor</Heading>
+                </CardHeader>
+                <CardBody>
+                  <Box h="250px" w="100%">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={chartData.map(item => ({
+                          ...item,
+                          pagesPerVisitor: (item.pageviews / item.visitors).toFixed(2)
+                        }))}
+                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={gridColorValue} />
+                        <XAxis dataKey="date" stroke={axisColorValue} />
+                        <YAxis stroke={axisColorValue} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: cardBgValue,
+                            borderColor: borderColorValue,
+                          }}
+                        />
+                        <Bar dataKey="pagesPerVisitor" fill={tealColor} name="Pages/Visitor" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </CardBody>
+              </Card>
+              
+              <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+                <CardHeader pb={0}>
+                  <Heading size="md" color={useColorModeValue('gray.900', 'white')}>Monthly Growth</Heading>
+                </CardHeader>
+                <CardBody>
+                  <Box h="250px" w="100%">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart
+                        data={chartData}
+                        margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <linearGradient id="colorVisitors" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={tealColor} stopOpacity={0.8} />
+                            <stop offset="95%" stopColor={tealColor} stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke={gridColorValue} />
+                        <XAxis dataKey="date" stroke={axisColorValue} />
+                        <YAxis stroke={axisColorValue} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: cardBgValue,
+                            borderColor: borderColorValue,
+                          }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="visitors" 
+                          stroke={tealColor} 
+                          fillOpacity={1} 
+                          fill="url(#colorVisitors)" 
+                          name="Visitors" 
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </CardBody>
+              </Card>
+            </SimpleGrid>
+          </TabPanel>
+          
+          <TabPanel px={0}>
+            {/* Conversion Rate */}
+            <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor} mb={6}>
+              <CardHeader pb={0}>
+                <Heading size="md" color={useColorModeValue('gray.900', 'white')}>Conversion Rate</Heading>
+              </CardHeader>
+              <CardBody>
+                <Box h="300px" w="100%">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={conversionData}
+                      margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke={gridColorValue} />
+                      <XAxis dataKey="date" stroke={axisColorValue} />
+                      <YAxis stroke={axisColorValue} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: cardBgValue,
+                          borderColor: borderColorValue,
+                        }}
+                        formatter={(value: string) => [`${value}%`, 'Conversion Rate']}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="conversionRate" 
+                        stroke={tealColor} 
+                        name="Conversion Rate %"
+                        activeDot={{ r: 8 }}
+                        strokeWidth={2}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Box>
+              </CardBody>
+            </Card>
+            
+            <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
+              <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+                <CardHeader pb={0}>
+                  <Heading size="md" color={useColorModeValue('gray.900', 'white')}>Visitor to Order Ratio</Heading>
+                </CardHeader>
+                <CardBody>
+                  <Box h="250px" w="100%">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={pieData}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                          outerRadius={80}
+                          fill={tealColor}
+                          dataKey="value"
+                        >
+                          {pieData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={index === 0 ? tealColor : tealLighterColor} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: cardBgValue,
+                            borderColor: borderColorValue,
+                          }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </CardBody>
+              </Card>
+              
+              <Card bg={cardBg} shadow="sm" borderWidth="1px" borderColor={borderColor}>
+                <CardHeader pb={0}>
+                  <Heading size="md" color={useColorModeValue('gray.900', 'white')}>Average Order Value</Heading>
+                </CardHeader>
+                <CardBody>
+                  <Box h="250px" w="100%">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={chartData.map(item => ({
+                          ...item,
+                          avgOrderValue: item.orders > 0 ? (item.revenue / item.orders).toFixed(2) : 0
+                        }))}
+                        margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke={gridColorValue} />
+                        <XAxis dataKey="date" stroke={axisColorValue} />
+                        <YAxis stroke={axisColorValue} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: cardBgValue,
+                            borderColor: borderColorValue,
+                          }}
+                          formatter={(value: string) => [`$${value}`, 'Avg Order Value']}
+                        />
+                        <Bar dataKey="avgOrderValue" fill={tealColor} name="Avg Order Value" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </CardBody>
+              </Card>
+            </SimpleGrid>
+          </TabPanel>
+        </TabPanels>
+      </Tabs>
+    </Box>
+  );
+} 

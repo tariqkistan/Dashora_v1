@@ -1,0 +1,200 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Dashora Analytics Dashboard SAM Template for serverless backend deployment
+
+  '
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: python3.12
+    Architectures:
+    - x86_64
+    Environment:
+      Variables:
+        METRICS_TABLE_NAME:
+          Ref: MetricsTable
+        DOMAINS_TABLE_NAME:
+          Ref: DomainsTable
+        USERS_TABLE_NAME:
+          Ref: UsersTable
+        JWT_SECRET:
+          Ref: JwtSecret
+Parameters:
+  JwtSecret:
+    Type: String
+    Description: Secret key for JWT token validation
+    NoEcho: true
+Resources:
+  MetricsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dashora-metrics
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: domain_id
+        AttributeType: S
+      - AttributeName: timestamp
+        AttributeType: S
+      KeySchema:
+      - AttributeName: domain_id
+        KeyType: HASH
+      - AttributeName: timestamp
+        KeyType: RANGE
+  DomainsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dashora-domains
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: user_id
+        AttributeType: S
+      - AttributeName: domain_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: user_id
+        KeyType: HASH
+      - AttributeName: domain_id
+        KeyType: RANGE
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dashora-users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: user_id
+        AttributeType: S
+      KeySchema:
+      - AttributeName: user_id
+        KeyType: HASH
+  WooCommerceFetcher:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: WooCommerceFetcher
+      Handler: app.lambda_handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DomainsTable
+      Events:
+        ScheduledFetch:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+    Metadata:
+      SamResourceId: WooCommerceFetcher
+  GoogleAnalyticsFetcher:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: GoogleAnalyticsFetcher
+      Handler: app.lambda_handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DomainsTable
+      Events:
+        ScheduledFetch:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 hour)
+    Metadata:
+      SamResourceId: GoogleAnalyticsFetcher
+  MetricsProcessor:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: MetricsProcessor
+      Handler: app.lambda_handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DomainsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: MetricsTable
+      Events:
+        ProcessWooCommerceData:
+          Type: CloudWatchEvent
+          Properties:
+            Pattern:
+              source:
+              - lambda
+              detail-type:
+              - Lambda Function Invocation Result - Success
+              detail:
+                requestContext:
+                  functionName:
+                  - Ref: WooCommerceFetcher
+        ProcessGAData:
+          Type: CloudWatchEvent
+          Properties:
+            Pattern:
+              source:
+              - lambda
+              detail-type:
+              - Lambda Function Invocation Result - Success
+              detail:
+                requestContext:
+                  functionName:
+                  - Ref: GoogleAnalyticsFetcher
+    Metadata:
+      SamResourceId: MetricsProcessor
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ApiFunction
+      Handler: app.lambda_handler
+      Policies:
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: DomainsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: MetricsTable
+      - DynamoDBCrudPolicy:
+          TableName:
+            Ref: UsersTable
+      Events:
+        ApiGateway:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+    Metadata:
+      SamResourceId: ApiFunction
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: '''*'''
+        AllowHeaders: '''*'''
+        AllowOrigin: '''*'''
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/
+  WooCommerceFetcher:
+    Description: WooCommerce Fetcher Function ARN
+    Value:
+      Fn::GetAtt:
+      - WooCommerceFetcher
+      - Arn
+  GoogleAnalyticsFetcher:
+    Description: Google Analytics Fetcher Function ARN
+    Value:
+      Fn::GetAtt:
+      - GoogleAnalyticsFetcher
+      - Arn
+  MetricsProcessor:
+    Description: Metrics Processor Function ARN
+    Value:
+      Fn::GetAtt:
+      - MetricsProcessor
+      - Arn
+  ApiFunction:
+    Description: API Handler Function ARN
+    Value:
+      Fn::GetAtt:
+      - ApiFunction
+      - Arn

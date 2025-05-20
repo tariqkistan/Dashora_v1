@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashora API Tester</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 1px solid #ccc;
+            padding-bottom: 10px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px 0;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+            max-height: 500px;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+        }
+        .success {
+            color: green;
+        }
+    </style>
+</head>
+<body>
+    <h1>Dashora Analytics API Tester</h1>
+    
+    <div class="container">
+        <div class="panel">
+            <h2>API Controls</h2>
+            
+            <div class="input-group">
+                <label for="token">JWT Token:</label>
+                <input type="text" id="token" placeholder="Bearer eyJhbGc...">
+                <button onclick="getTestToken()">Get Test Token</button>
+            </div>
+
+            <div class="input-group">
+                <label for="endpoint">Endpoint:</label>
+                <select id="endpoint">
+                    <option value="info">API Info</option>
+                    <option value="domains">List Domains</option>
+                    <option value="metrics">Get Domain Metrics</option>
+                </select>
+            </div>
+
+            <div id="metrics-options" style="display: none;">
+                <div class="input-group">
+                    <label for="domain">Domain:</label>
+                    <input type="text" id="domain" value="example-store.com">
+                </div>
+                <div class="input-group">
+                    <label for="days">Days:</label>
+                    <input type="number" id="days" value="7" min="1" max="30">
+                </div>
+            </div>
+            
+            <button onclick="callAPI()">Call API</button>
+        </div>
+        
+        <div class="panel">
+            <h2>Response</h2>
+            <div id="status"></div>
+            <pre id="response">No response yet...</pre>
+        </div>
+    </div>
+
+    <script>
+        // Show/hide metrics options based on the selected endpoint
+        document.getElementById('endpoint').addEventListener('change', function() {
+            const metricsOptions = document.getElementById('metrics-options');
+            metricsOptions.style.display = this.value === 'metrics' ? 'block' : 'none';
+        });
+
+        // Get a test token
+        async function getTestToken() {
+            try {
+                const response = await fetch('http://localhost:5000/test-token');
+                const data = await response.json();
+                document.getElementById('token').value = 'Bearer ' + data.token;
+                
+                // Display response
+                document.getElementById('status').innerHTML = '<span class="success">Success: Got test token</span>';
+                document.getElementById('response').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status').innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+
+        // Call the API based on the selected endpoint
+        async function callAPI() {
+            const endpoint = document.getElementById('endpoint').value;
+            const token = document.getElementById('token').value;
+            let url;
+            
+            switch (endpoint) {
+                case 'info':
+                    url = 'http://localhost:5000/';
+                    break;
+                case 'domains':
+                    url = 'http://localhost:5000/domains';
+                    break;
+                case 'metrics':
+                    const domain = document.getElementById('domain').value;
+                    const days = document.getElementById('days').value;
+                    url = `http://localhost:5000/metrics/${domain}?days=${days}`;
+                    break;
+                default:
+                    url = 'http://localhost:5000/';
+            }
+            
+            try {
+                const options = {
+                    method: 'GET',
+                    headers: {}
+                };
+                
+                if (token) {
+                    options.headers['Authorization'] = token;
+                }
+                
+                const response = await fetch(url, options);
+                const data = await response.json();
+                
+                // Display response
+                document.getElementById('status').innerHTML = 
+                    `<span class="${response.ok ? 'success' : 'error'}">
+                        Status: ${response.status} ${response.statusText}
+                    </span>`;
+                document.getElementById('response').textContent = JSON.stringify(data, null, 2);
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('status').innerHTML = `<span class="error">Error: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html> 
