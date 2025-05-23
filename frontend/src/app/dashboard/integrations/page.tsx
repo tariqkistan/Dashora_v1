@@ -430,8 +430,23 @@ export default function IntegrationsPage() {
     
     if (!newDomain.domain.trim()) {
       errors.domain = 'Domain is required';
-    } else if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/.test(newDomain.domain.trim())) {
-      errors.domain = 'Please enter a valid domain (e.g., example.com)';
+    } else {
+      // Extract the domain from URL if it contains http:// or https://
+      let domainValue = newDomain.domain.trim();
+      try {
+        // Check if it's a URL with protocol
+        if (domainValue.startsWith('http://') || domainValue.startsWith('https://')) {
+          const url = new URL(domainValue);
+          domainValue = url.hostname;
+        }
+        
+        // Now validate the extracted domain with a more permissive regex
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z0-9][a-zA-Z0-9-]*)+$/.test(domainValue)) {
+          errors.domain = 'Please enter a valid domain (e.g., example.com)';
+        }
+      } catch (e) {
+        errors.domain = 'Please enter a valid domain or URL';
+      }
     }
     
     if (newDomain.woocommerce.enabled) {
@@ -468,23 +483,35 @@ export default function IntegrationsPage() {
     setIsSubmitting(true);
     
     try {
+      // Extract domain from URL if needed
+      let domainValue = newDomain.domain.trim();
+      try {
+        if (domainValue.startsWith('http://') || domainValue.startsWith('https://')) {
+          const url = new URL(domainValue);
+          domainValue = url.hostname;
+        }
+      } catch (e) {
+        console.error('Error parsing domain URL:', e);
+        // Keep the original value if parsing fails
+      }
+      
       // Add domain to the system
       const result = await domainService.addDomain({
         name: newDomain.name.trim(),
-        domain: newDomain.domain.trim(),
+        domain: domainValue,
         woocommerce_enabled: newDomain.woocommerce.enabled,
         ga_enabled: newDomain.googleAnalytics.enabled
       });
       
       if (result.success) {
         // Connect integrations if enabled
-        const domainId = result.domain_id || newDomain.domain.trim();
+        const domainId = result.domain_id || domainValue;
         
         // Connect WooCommerce if enabled
         if (newDomain.woocommerce.enabled) {
           try {
             await domainService.connectIntegration(domainId, 'woocommerce', {
-              domain: newDomain.domain.trim(),
+              domain: domainValue,
               consumer_key: newDomain.woocommerce.key.trim(),
               consumer_secret: newDomain.woocommerce.secret.trim()
             });
@@ -643,7 +670,7 @@ export default function IntegrationsPage() {
               <FormControl isRequired isInvalid={!!formErrors.domain}>
                 <FormLabel>Domain</FormLabel>
                 <Input 
-                  placeholder="example.com" 
+                  placeholder="example.com or https://example.com" 
                   value={newDomain.domain}
                   onChange={(e) => handleNewDomainChange('domain', e.target.value)}
                 />
