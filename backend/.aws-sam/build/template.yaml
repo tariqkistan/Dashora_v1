@@ -148,6 +148,7 @@ Resources:
       FunctionName: dashora-api-handler
       CodeUri: DashoraApiFunction
       Handler: lambda_function.lambda_handler
+      Timeout: 60
       Layers:
       - Ref: DashoraDependenciesLayer
       Policies:

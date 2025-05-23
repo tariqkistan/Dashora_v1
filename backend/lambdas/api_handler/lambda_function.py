@@ -804,6 +804,7 @@ def handle_woocommerce_details(event, user_id):
         try:
             import requests
             from datetime import datetime, timedelta
+            import concurrent.futures
             
             # Format the URL correctly
             store_url = f"https://{domain}"
@@ -823,94 +824,115 @@ def handle_woocommerce_details(event, user_id):
             
             print(f"Fetching WooCommerce data for {store_url}")
             
-            # 1. Get total number of orders
+            # Initialize default values
+            total_orders = 0
+            current_revenue = 0.0
+            currency = 'ZAR'
+            recent_orders_count = 0
+            top_products = []
+            store_currency = currency
+            store_country = 'Unknown'
+            
+            # Function to make API calls with timeout
+            def make_api_call(url, call_params, timeout=15):
+                try:
+                    response = requests.get(url, params=call_params, headers=headers, timeout=timeout)
+                    if response.status_code == 200:
+                        return response
+                    else:
+                        print(f"API call failed with status {response.status_code}: {url}")
+                        return None
+                except Exception as e:
+                    print(f"API call error for {url}: {str(e)}")
+                    return None
+            
+            # 1. Get total number of orders (quick call)
             orders_url = f"{store_url}/wp-json/wc/v3/orders"
             orders_params = {**params, 'per_page': 1, 'status': 'any'}
-            orders_response = requests.get(orders_url, params=orders_params, headers=headers, timeout=30)
+            orders_response = make_api_call(orders_url, orders_params)
             
-            total_orders = 0
-            if orders_response.status_code == 200:
-                # Get total count from headers
+            if orders_response:
                 total_orders = int(orders_response.headers.get('X-WP-Total', 0))
                 print(f"Total orders: {total_orders}")
             
-            # 2. Get current revenue (completed orders)
-            # Calculate revenue from recent completed orders
+            # 2. Get current revenue (completed orders) - limit to 50 for speed
             revenue_params = {
                 **params, 
-                'per_page': 100,  # Get last 100 orders to calculate revenue
+                'per_page': 50,  # Reduced from 100 for faster response
                 'status': 'completed',
                 'orderby': 'date',
                 'order': 'desc'
             }
-            revenue_response = requests.get(orders_url, params=revenue_params, headers=headers, timeout=30)
+            revenue_response = make_api_call(orders_url, revenue_params)
             
-            current_revenue = 0.0
-            currency = 'ZAR'
-            recent_orders_count = 0
-            
-            if revenue_response.status_code == 200:
-                orders_data = revenue_response.json()
-                for order in orders_data:
-                    # Sum up the total from completed orders
-                    order_total = float(order.get('total', 0))
-                    current_revenue += order_total
-                    recent_orders_count += 1
+            if revenue_response:
+                try:
+                    orders_data = revenue_response.json()
+                    for order in orders_data:
+                        # Sum up the total from completed orders
+                        order_total = float(order.get('total', 0))
+                        current_revenue += order_total
+                        recent_orders_count += 1
+                        
+                        # Get currency from first order
+                        if currency == 'ZAR' and order.get('currency'):
+                            currency = order.get('currency')
                     
-                    # Get currency from first order
-                    if currency == 'ZAR' and order.get('currency'):
-                        currency = order.get('currency')
-                
-                print(f"Current revenue from {recent_orders_count} recent completed orders: {current_revenue} {currency}")
+                    print(f"Current revenue from {recent_orders_count} recent completed orders: {current_revenue} {currency}")
+                except Exception as e:
+                    print(f"Error processing orders data: {str(e)}")
             
-            # 3. Get top selling products
+            # 3. Get top selling products - limit to 20 for speed
             products_url = f"{store_url}/wp-json/wc/v3/products"
             products_params = {
                 **params,
-                'per_page': 50,  # Get more products to analyze
-                'orderby': 'popularity',  # Order by popularity if supported
+                'per_page': 20,  # Reduced from 50 for faster response
+                'orderby': 'popularity',
                 'order': 'desc'
             }
-            products_response = requests.get(products_url, params=products_params, headers=headers, timeout=30)
+            products_response = make_api_call(products_url, products_params)
             
-            top_products = []
-            if products_response.status_code == 200:
-                products_data = products_response.json()
+            if products_response:
+                try:
+                    products_data = products_response.json()
+                    
+                    # Sort products by total_sales (if available) or use the order from API
+                    sorted_products = sorted(
+                        products_data, 
+                        key=lambda x: int(x.get('total_sales', 0)), 
+                        reverse=True
+                    )
+                    
+                    # Get top 3 products
+                    for i, product in enumerate(sorted_products[:3]):
+                        top_products.append({
+                            'name': product.get('name', 'Unknown Product'),
+                            'total_sales': int(product.get('total_sales', 0)),
+                            'price': float(product.get('price', 0)),
+                            'image': product.get('images', [{}])[0].get('src', '') if product.get('images') else '',
+                            'sku': product.get('sku', ''),
+                            'stock_status': product.get('stock_status', 'unknown')
+                        })
+                    
+                    print(f"Top {len(top_products)} selling products retrieved")
+                except Exception as e:
+                    print(f"Error processing products data: {str(e)}")
+            
+            # 4. Get store currency and basic info (optional, skip if taking too long)
+            try:
+                settings_url = f"{store_url}/wp-json/wc/v3/settings/general"
+                settings_response = make_api_call(settings_url, params, timeout=10)
                 
-                # Sort products by total_sales (if available) or use the order from API
-                sorted_products = sorted(
-                    products_data, 
-                    key=lambda x: int(x.get('total_sales', 0)), 
-                    reverse=True
-                )
-                
-                # Get top 3 products
-                for i, product in enumerate(sorted_products[:3]):
-                    top_products.append({
-                        'name': product.get('name', 'Unknown Product'),
-                        'total_sales': int(product.get('total_sales', 0)),
-                        'price': float(product.get('price', 0)),
-                        'image': product.get('images', [{}])[0].get('src', '') if product.get('images') else '',
-                        'sku': product.get('sku', ''),
-                        'stock_status': product.get('stock_status', 'unknown')
-                    })
-                
-                print(f"Top {len(top_products)} selling products retrieved")
-            
-            # 4. Get store currency and basic info
-            settings_url = f"{store_url}/wp-json/wc/v3/settings/general"
-            settings_response = requests.get(settings_url, params=params, headers=headers, timeout=30)
-            
-            store_currency = currency
-            store_country = 'Unknown'
-            
-            if settings_response.status_code == 200:
-                settings_data = settings_response.json()
-                for setting in settings_data:
-                    if setting.get('id') == 'woocommerce_currency':
-                        store_currency = setting.get('value', currency)
-                    elif setting.get('id') == 'woocommerce_default_country':
-                        store_country = setting.get('value', 'Unknown')
+                if settings_response:
+                    settings_data = settings_response.json()
+                    for setting in settings_data:
+                        if setting.get('id') == 'woocommerce_currency':
+                            store_currency = setting.get('value', currency)
+                        elif setting.get('id') == 'woocommerce_default_country':
+                            store_country = setting.get('value', 'Unknown')
+            except Exception as e:
+                print(f"Error getting store settings (non-critical): {str(e)}")
+                store_currency = currency  # Use currency from orders
             
             # Prepare the response with all the data
             woocommerce_data = {
@@ -931,7 +953,7 @@ def handle_woocommerce_details(event, user_id):
                 'last_updated': datetime.utcnow().isoformat()
             }
             
-            print(f"WooCommerce data compiled: {json.dumps(woocommerce_data, indent=2)}")
+            print(f"WooCommerce data compiled successfully")
             
             return {
                 'statusCode': 200,
