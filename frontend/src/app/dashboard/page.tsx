@@ -31,6 +31,15 @@ import {
   Tab,
   TabPanels,
   TabPanel,
+  Table,
+  Thead,
+  Tbody,
+  Tr,
+  Th,
+  Td,
+  TableContainer,
+  Alert,
+  AlertIcon,
 } from '@chakra-ui/react';
 import {
   AreaChart,
@@ -188,13 +197,46 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle?: string 
   );
 }
 
+interface WooCommerceProduct {
+  id: number;
+  name: string;
+  price: string;
+  stock_quantity: number;
+  total_sales: number;
+}
+
+interface WooCommerceOrder {
+  id: number;
+  status: string;
+  date_created: string;
+  total: string;
+  line_items: Array<{
+    name: string;
+    quantity: number;
+  }>;
+}
+
+interface WooCommerceData {
+  store_name: string;
+  product_count: number;
+  recent_products: WooCommerceProduct[];
+  recent_orders: WooCommerceOrder[];
+  revenue_today: number;
+  revenue_week: number;
+  orders_today: number;
+  orders_week: number;
+}
+
 export default function DashboardPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string>('');
+  const [selectedDomainData, setSelectedDomainData] = useState<Domain | null>(null);
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
+  const [wooCommerceData, setWooCommerceData] = useState<WooCommerceData | null>(null);
+  const [wooCommerceLoading, setWooCommerceLoading] = useState(false);
 
   const headingColor = useColorModeValue('gray.700', 'white');
   const selectBg = useColorModeValue('white', '#171923');
@@ -228,6 +270,7 @@ export default function DashboardPage() {
         setDomains(domains);
         if (domains.length > 0) {
           setSelectedDomain(domains[0].domain);
+          setSelectedDomainData(domains[0]);
         }
       } catch (err: any) {
         setError(err.response?.data?.error || 'Failed to fetch domains');
@@ -246,13 +289,83 @@ export default function DashboardPage() {
       try {
         const { metrics } = await metricsService.getMetrics(selectedDomain);
         setMetrics(metrics);
+        
+        // Find the domain data for the selected domain
+        const domainData = domains.find(d => d.domain === selectedDomain);
+        setSelectedDomainData(domainData || null);
+        
+        // If domain has WooCommerce enabled, fetch WooCommerce data
+        if (domainData?.woocommerce_enabled) {
+          fetchWooCommerceData(selectedDomain);
+        } else {
+          setWooCommerceData(null);
+        }
       } catch (err: any) {
         setError(err.response?.data?.error || 'Failed to fetch metrics');
       }
     };
 
     fetchMetrics();
-  }, [selectedDomain]);
+  }, [selectedDomain, domains]);
+  
+  const fetchWooCommerceData = async (domain: string) => {
+    setWooCommerceLoading(true);
+    try {
+      // Get WooCommerce integration details
+      const details = await domainService.getIntegrationDetails(domain, 'woocommerce');
+      
+      if (details) {
+        // In development, we'll use mock data
+        if (process.env.NODE_ENV === 'development') {
+          // Generate fake WooCommerce data for development
+          const mockWooCommerceData: WooCommerceData = {
+            store_name: details.store_name || domain,
+            product_count: details.product_count || 42,
+            revenue_today: Math.floor(Math.random() * 1000) + 500,
+            revenue_week: Math.floor(Math.random() * 5000) + 2000,
+            orders_today: Math.floor(Math.random() * 10) + 1,
+            orders_week: Math.floor(Math.random() * 50) + 10,
+            recent_products: Array(5).fill(0).map((_, i) => ({
+              id: i + 1,
+              name: `Product ${i + 1}`,
+              price: `$${(Math.random() * 100 + 10).toFixed(2)}`,
+              stock_quantity: Math.floor(Math.random() * 50) + 1,
+              total_sales: Math.floor(Math.random() * 100)
+            })),
+            recent_orders: Array(5).fill(0).map((_, i) => ({
+              id: i + 1000,
+              status: ['processing', 'completed', 'on-hold'][Math.floor(Math.random() * 3)],
+              date_created: new Date(Date.now() - Math.random() * 604800000).toISOString(),
+              total: `$${(Math.random() * 200 + 20).toFixed(2)}`,
+              line_items: Array(Math.floor(Math.random() * 3) + 1).fill(0).map((_, j) => ({
+                name: `Product ${j + 1}`,
+                quantity: Math.floor(Math.random() * 3) + 1
+              }))
+            }))
+          };
+          
+          setWooCommerceData(mockWooCommerceData);
+        } else {
+          // In production, the actual WooCommerce data would come from the API
+          // For now, we'll just set what we have
+          setWooCommerceData({
+            store_name: details.store_name || domain,
+            product_count: details.product_count || 0,
+            revenue_today: 0,
+            revenue_week: 0,
+            orders_today: 0,
+            orders_week: 0,
+            recent_products: [],
+            recent_orders: []
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching WooCommerce data:', err);
+    } finally {
+      setWooCommerceLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -329,6 +442,115 @@ export default function DashboardPage() {
               subtitle="Unique visitors"
             />
           </SimpleGrid>
+          
+          {/* WooCommerce section - only appears when WooCommerce is enabled */}
+          {selectedDomainData?.woocommerce_enabled && (
+            <>
+              <SectionHeading 
+                title="WooCommerce Data" 
+                subtitle={wooCommerceData?.store_name || ""}
+              />
+              
+              {wooCommerceLoading ? (
+                <Flex justify="center" my={6}>
+                  <Spinner />
+                </Flex>
+              ) : wooCommerceData ? (
+                <>
+                  <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={5} mb={8}>
+                    <MetricCard
+                      title="Today's Revenue"
+                      value={`$${wooCommerceData.revenue_today.toFixed(2)}`}
+                      subtitle="Last 24 hours"
+                    />
+                    <MetricCard
+                      title="Weekly Revenue"
+                      value={`$${wooCommerceData.revenue_week.toFixed(2)}`}
+                      subtitle="Last 7 days"
+                    />
+                    <MetricCard
+                      title="Today's Orders"
+                      value={wooCommerceData.orders_today}
+                      subtitle="Last 24 hours"
+                    />
+                    <MetricCard
+                      title="Products"
+                      value={wooCommerceData.product_count}
+                      subtitle="Total products"
+                    />
+                  </SimpleGrid>
+                  
+                  <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={6} mb={8}>
+                    <ChartCard title="Recent Orders">
+                      <TableContainer>
+                        <Table variant="simple" size="sm">
+                          <Thead>
+                            <Tr>
+                              <Th>Order ID</Th>
+                              <Th>Date</Th>
+                              <Th>Status</Th>
+                              <Th isNumeric>Total</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {wooCommerceData.recent_orders.map(order => (
+                              <Tr key={order.id}>
+                                <Td>#{order.id}</Td>
+                                <Td>{new Date(order.date_created).toLocaleDateString()}</Td>
+                                <Td>
+                                  <Badge
+                                    colorScheme={
+                                      order.status === 'completed' ? 'green' : 
+                                      order.status === 'processing' ? 'blue' : 'yellow'
+                                    }
+                                  >
+                                    {order.status}
+                                  </Badge>
+                                </Td>
+                                <Td isNumeric>{order.total}</Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      </TableContainer>
+                    </ChartCard>
+                    
+                    <ChartCard title="Top Products">
+                      <TableContainer>
+                        <Table variant="simple" size="sm">
+                          <Thead>
+                            <Tr>
+                              <Th>Product</Th>
+                              <Th isNumeric>Price</Th>
+                              <Th isNumeric>Stock</Th>
+                              <Th isNumeric>Sales</Th>
+                            </Tr>
+                          </Thead>
+                          <Tbody>
+                            {wooCommerceData.recent_products.map(product => (
+                              <Tr key={product.id}>
+                                <Td>{product.name}</Td>
+                                <Td isNumeric>{product.price}</Td>
+                                <Td isNumeric>{product.stock_quantity}</Td>
+                                <Td isNumeric>{product.total_sales}</Td>
+                              </Tr>
+                            ))}
+                          </Tbody>
+                        </Table>
+                      </TableContainer>
+                    </ChartCard>
+                  </Grid>
+                </>
+              ) : (
+                <Alert status="info" mb={8}>
+                  <AlertIcon />
+                  <Text>
+                    WooCommerce is enabled, but no data is available yet. Please check your integration settings.
+                  </Text>
+                </Alert>
+              )}
+            </>
+          )}
           
           <Tabs 
             variant="enclosed" 
