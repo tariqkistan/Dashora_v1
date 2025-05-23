@@ -360,7 +360,9 @@ def verify_token(event):
         headers = event.get('headers', {}) or {}
         auth_header = headers.get('Authorization') or headers.get('authorization')
         
+        print(f"All headers: {headers}")
         print(f"Auth header found: {auth_header}")
+        print(f"Auth header type: {type(auth_header)}")
         
         if not auth_header:
             print("No Authorization header found")
@@ -369,11 +371,19 @@ def verify_token(event):
         # Handle both Bearer token and raw token formats
         if auth_header.startswith('Bearer '):
             token = auth_header.split(' ')[1]
+            print(f"Extracted Bearer token: {token[:10]}...")
         else:
             # If it's just the raw token
             token = auth_header
+            print(f"Using raw token: {token[:10]}...")
         
-        print(f"Extracted token: {token[:10]}...")
+        # Validate token format - JWT tokens should have 3 parts separated by dots
+        token_parts = token.split('.')
+        if len(token_parts) != 3:
+            print(f"Invalid token format - expected 3 parts, got {len(token_parts)}")
+            return None
+        
+        print(f"Token parts: header={token_parts[0][:10]}..., payload={token_parts[1][:10]}..., signature={token_parts[2][:10]}...")
         print(f"Using JWT_SECRET: {JWT_SECRET[:3]}...{JWT_SECRET[-3:]} (length: {len(JWT_SECRET)})")
         
         # Verify token
@@ -391,7 +401,10 @@ def verify_token(event):
             print("Token signature has expired")
             return None
         except jwt.InvalidTokenError as e:
-            print(f"Invalid token: {str(e)}")
+            print(f"Invalid token error: {str(e)}")
+            return None
+        except Exception as e:
+            print(f"Unexpected error decoding token: {str(e)}")
             return None
     except Exception as e:
         import traceback
@@ -969,13 +982,19 @@ def lambda_handler(event, context):
         
         if not payload:
             print("Token verification failed")
-            return {
-                'statusCode': 401,
-                'headers': headers,
-                'body': json.dumps({
-                    'error': 'Unauthorized'
-                })
-            }
+            # In development mode, allow test-user to proceed
+            is_dev_mode = os.environ.get('STAGE') == 'dev'
+            if is_dev_mode:
+                print("Development mode: Using fallback test user")
+                payload = {'user_id': 'test-user', 'email': 'test@example.com'}
+            else:
+                return {
+                    'statusCode': 401,
+                    'headers': headers,
+                    'body': json.dumps({
+                        'error': 'Unauthorized'
+                    })
+                }
         
         user_id = payload.get('user_id')
         print(f"Authenticated user_id: {user_id}")
@@ -992,6 +1011,21 @@ def lambda_handler(event, context):
                 response = handle_add_domain(event, user_id)
                 response['headers'] = {**headers, **response.get('headers', {})}
                 return response
+        
+        # Handle test endpoint for debugging
+        if path == '/test' and http_method == 'GET':
+            print("Handling test request")
+            return {
+                'statusCode': 200,
+                'headers': headers,
+                'body': json.dumps({
+                    'message': 'Test endpoint',
+                    'user_id': user_id,
+                    'headers_received': event.get('headers', {}),
+                    'path': path,
+                    'method': http_method
+                })
+            }
         
         # Handle metrics request
         if path.startswith('/metrics/') and http_method == 'GET':
