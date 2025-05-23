@@ -10,6 +10,7 @@
     "test-api": "node src/scripts/test-api-connection.js"
   },
   "dependencies": {
+    "@chakra-ui/icons": "^2.2.4",
     "@chakra-ui/react": "latest",
     "@emotion/react": "latest",
     "@emotion/styled": "latest",
