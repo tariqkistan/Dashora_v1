@@ -464,28 +464,29 @@ def handle_woocommerce_connect(event, user_id):
             # Test URL - get basic store info
             test_url = f"{store_url}/wp-json/wc/v3/system_status"
             
-            # Parameters for WooCommerce API
-            params = {'per_page': 1}
+            # Parameters for WooCommerce API with authentication in query string
+            params = {
+                'consumer_key': consumer_key,
+                'consumer_secret': consumer_secret,
+                'per_page': 1
+            }
             
-            # Authentication
-            auth = (consumer_key, consumer_secret)
-            
-            # Make the request
+            # Make the request using query string authentication instead of headers
             print(f"Testing WooCommerce connection to {test_url}")
-            test_response = requests.get(test_url, auth=auth, params=params)
+            test_response = requests.get(test_url, params=params)
             
             if test_response.status_code == 200:
                 print("WooCommerce connection successful")
                 
                 # Get store information
                 store_info_url = f"{store_url}/wp-json/wc/v3/products"
-                store_response = requests.get(store_info_url, auth=auth, params={'per_page': 5})
+                store_response = requests.get(store_info_url, params={**params, 'per_page': 5})
                 store_data = store_response.json()
                 product_count = len(store_data)
                 
                 # Get recent orders
                 orders_url = f"{store_url}/wp-json/wc/v3/orders"
-                order_response = requests.get(orders_url, auth=auth, params={'per_page': 1})
+                order_response = requests.get(orders_url, params={**params, 'per_page': 1})
                 order_data = order_response.json()
                 last_order_date = order_data[0]['date_created'] if order_data else None
                 
@@ -737,10 +738,16 @@ def handle_woocommerce_details(event, user_id):
             # Format the URL correctly
             store_url = f"https://{domain}"
             
+            # Parameters for WooCommerce API with authentication in query string
+            params = {
+                'consumer_key': consumer_key,
+                'consumer_secret': consumer_secret,
+                'per_page': 5
+            }
+            
             # Get store information
             products_url = f"{store_url}/wp-json/wc/v3/products"
-            auth = (consumer_key, consumer_secret)
-            products_response = requests.get(products_url, auth=auth, params={'per_page': 5})
+            products_response = requests.get(products_url, params=params)
             
             if products_response.status_code == 200:
                 products = products_response.json()
@@ -748,13 +755,19 @@ def handle_woocommerce_details(event, user_id):
                 
                 # Get recent orders
                 orders_url = f"{store_url}/wp-json/wc/v3/orders"
-                orders_response = requests.get(orders_url, auth=auth, params={'per_page': 1})
+                orders_params = {
+                    'consumer_key': consumer_key,
+                    'consumer_secret': consumer_secret,
+                    'per_page': 1
+                }
+                orders_response = requests.get(orders_url, params=orders_params)
                 
-                last_order_date = None
                 if orders_response.status_code == 200:
                     orders = orders_response.json()
                     if orders:
                         last_order_date = orders[0].get('date_created')
+                else:
+                    last_order_date = None
                 
                 return {
                     'statusCode': 200,
@@ -819,6 +832,101 @@ def handle_woocommerce_details(event, user_id):
             })
         }
 
+def handle_add_domain(event, user_id):
+    """Handle add domain request"""
+    try:
+        # Parse request body
+        body = json.loads(event.get('body', '{}'))
+        
+        domain = body.get('domain')
+        name = body.get('name')
+        woocommerce_enabled = body.get('woocommerce_enabled', False)
+        ga_enabled = body.get('ga_enabled', False)
+        
+        print(f"Add domain request: domain={domain}, name={name}")
+        
+        if not domain or not name:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+                },
+                'body': json.dumps({
+                    'error': 'Domain and name are required'
+                })
+            }
+        
+        # Connect to DynamoDB
+        dynamodb = boto3.resource('dynamodb')
+        domains_table = dynamodb.Table(DOMAINS_TABLE)
+        
+        # Check if domain already exists for this user
+        response = domains_table.query(
+            KeyConditionExpression=Key('user_id').eq(user_id) & Key('domain_id').eq(domain)
+        )
+        
+        if response['Count'] > 0:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+                },
+                'body': json.dumps({
+                    'error': 'Domain already exists'
+                })
+            }
+        
+        # Add domain to DynamoDB
+        current_time = int(datetime.utcnow().timestamp())
+        
+        domains_table.put_item(
+            Item={
+                'user_id': user_id,
+                'domain_id': domain,
+                'name': name,
+                'woocommerce_enabled': woocommerce_enabled,
+                'ga_enabled': ga_enabled,
+                'created_at': current_time,
+                'updated_at': current_time
+            }
+        )
+        
+        print(f"Domain {domain} added for user {user_id}")
+        
+        return {
+            'statusCode': 201,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+            },
+            'body': json.dumps({
+                'success': True,
+                'domain_id': domain,
+                'message': 'Domain added successfully'
+            })
+        }
+    except Exception as e:
+        import traceback
+        stack_trace = traceback.format_exc()
+        print(f"Error in add domain handler: {str(e)}")
+        print(f"Stack trace: {stack_trace}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+            },
+            'body': json.dumps({
+                'error': f"Domain addition error: {str(e)}"
+            })
+        }
+
 def lambda_handler(event, context):
     """Main Lambda handler function"""
     # Log full event for debugging
@@ -873,11 +981,17 @@ def lambda_handler(event, context):
         print(f"Authenticated user_id: {user_id}")
         
         # Handle domains request
-        if path == '/domains' and http_method == 'GET':
-            print("Handling domains request")
-            response = handle_get_domains(event, user_id)
-            response['headers'] = {**headers, **response.get('headers', {})}
-            return response
+        if path == '/domains':
+            if http_method == 'GET':
+                print("Handling get domains request")
+                response = handle_get_domains(event, user_id)
+                response['headers'] = {**headers, **response.get('headers', {})}
+                return response
+            elif http_method == 'POST':
+                print("Handling add domain request")
+                response = handle_add_domain(event, user_id)
+                response['headers'] = {**headers, **response.get('headers', {})}
+                return response
         
         # Handle metrics request
         if path.startswith('/metrics/') and http_method == 'GET':
