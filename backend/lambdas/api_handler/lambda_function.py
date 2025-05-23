@@ -162,10 +162,30 @@ def handle_get_domains(event, user_id):
         is_dev_mode = os.environ.get('STAGE') == 'dev'
         print(f"Development mode: {is_dev_mode}")
         
-        if is_dev_mode and user_id == 'test-user':
-            # In development mode, return mock domains
-            print("Using mock domains data for test user")
-            domains = [
+        domains = []
+        
+        # Always query real domains from database first
+        try:
+            response = domains_table.query(
+                KeyConditionExpression=Key('user_id').eq(user_id)
+            )
+            
+            for item in response['Items']:
+                domains.append({
+                    'domain': item.get('domain_id'),
+                    'name': item.get('name', ''),
+                    'woocommerce_enabled': item.get('woocommerce_enabled', False),
+                    'ga_enabled': item.get('ga_enabled', False)
+                })
+            
+            print(f"Found {len(domains)} real domains from database")
+        except Exception as e:
+            print(f"Error querying real domains: {str(e)}")
+        
+        # In development mode, add mock domains if no real domains exist
+        if is_dev_mode and user_id == 'test-user' and len(domains) == 0:
+            print("Adding mock domains data for test user (no real domains found)")
+            domains.extend([
                 {
                     'domain': 'example.com',
                     'name': 'Example Store',
@@ -178,23 +198,9 @@ def handle_get_domains(event, user_id):
                     'woocommerce_enabled': True,
                     'ga_enabled': False
                 }
-            ]
-        else:
-            # Query domains for the authenticated user
-            response = domains_table.query(
-                KeyConditionExpression=Key('user_id').eq(user_id)
-            )
-            
-            domains = []
-            for item in response['Items']:
-                domains.append({
-                    'domain': item.get('domain_id'),
-                    'name': item.get('name', ''),
-                    'woocommerce_enabled': item.get('woocommerce_enabled', False),
-                    'ga_enabled': item.get('ga_enabled', False)
-                })
+            ])
         
-        print(f"Found {len(domains)} domains")
+        print(f"Returning {len(domains)} total domains")
         
         # Return success response
         return {
@@ -468,6 +474,31 @@ def handle_woocommerce_connect(event, user_id):
                 })
             }
         
+        # Store WooCommerce credentials in domain record
+        try:
+            dynamodb = boto3.resource('dynamodb')
+            domains_table = dynamodb.Table(DOMAINS_TABLE)
+            
+            # Update domain with WooCommerce credentials
+            domains_table.update_item(
+                Key={
+                    'user_id': user_id,
+                    'domain_id': domain
+                },
+                UpdateExpression='SET wc_consumer_key = :key, wc_consumer_secret = :secret, woocommerce_enabled = :enabled, updated_at = :updated_at',
+                ExpressionAttributeValues={
+                    ':key': consumer_key,
+                    ':secret': consumer_secret,
+                    ':enabled': True,
+                    ':updated_at': int(datetime.utcnow().timestamp())
+                }
+            )
+            
+            print(f"WooCommerce credentials stored for domain: {domain}")
+        except Exception as e:
+            print(f"Error storing WooCommerce credentials: {str(e)}")
+            # Continue with the connection test even if storage fails
+        
         # Test the WooCommerce API connection
         try:
             import requests
@@ -517,20 +548,6 @@ def handle_woocommerce_connect(event, user_id):
                 
                 # Create store name from domain if not provided in response
                 store_name = domain.split('.')[0].capitalize()
-                
-                # Store API credentials in DynamoDB
-                domains_table.update_item(
-                    Key={
-                        'user_id': user_id,
-                        'domain_id': domain
-                    },
-                    UpdateExpression="set wc_consumer_key = :key, wc_consumer_secret = :secret, woocommerce_enabled = :enabled",
-                    ExpressionAttributeValues={
-                        ':key': consumer_key,
-                        ':secret': consumer_secret,
-                        ':enabled': True
-                    }
-                )
                 
                 return {
                     'statusCode': 200,
@@ -898,22 +915,46 @@ def handle_add_domain(event, user_id):
             KeyConditionExpression=Key('user_id').eq(user_id) & Key('domain_id').eq(domain)
         )
         
+        current_time = int(datetime.utcnow().timestamp())
+        
         if response['Count'] > 0:
+            # Domain exists, update it instead of returning error
+            print(f"Domain {domain} already exists for user {user_id}, updating...")
+            
+            domains_table.update_item(
+                Key={
+                    'user_id': user_id,
+                    'domain_id': domain
+                },
+                UpdateExpression='SET #name = :name, woocommerce_enabled = :wc_enabled, ga_enabled = :ga_enabled, updated_at = :updated_at',
+                ExpressionAttributeNames={
+                    '#name': 'name'  # 'name' is a reserved keyword in DynamoDB
+                },
+                ExpressionAttributeValues={
+                    ':name': name,
+                    ':wc_enabled': woocommerce_enabled,
+                    ':ga_enabled': ga_enabled,
+                    ':updated_at': current_time
+                }
+            )
+            
+            print(f"Domain {domain} updated for user {user_id}")
+            
             return {
-                'statusCode': 400,
+                'statusCode': 200,
                 'headers': {
                     'Access-Control-Allow-Origin': '*',
                     'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
                     'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
                 },
                 'body': json.dumps({
-                    'error': 'Domain already exists'
+                    'success': True,
+                    'domain_id': domain,
+                    'message': 'Domain updated successfully'
                 })
             }
         
-        # Add domain to DynamoDB
-        current_time = int(datetime.utcnow().timestamp())
-        
+        # Add new domain to DynamoDB
         domains_table.put_item(
             Item={
                 'user_id': user_id,
