@@ -31,6 +31,8 @@ import {
   Tab,
   TabPanels,
   TabPanel,
+  Image,
+  VStack,
 } from '@chakra-ui/react';
 import {
   AreaChart,
@@ -66,6 +68,19 @@ interface Metric {
   visitors: number;
   orders: number;
   revenue: number;
+}
+
+interface WooCommerceData {
+  store_name: string;
+  total_orders: number;
+  current_revenue: number;
+  currency: string;
+  top_products: Array<{
+    id: number;
+    name: string;
+    image: string;
+    total_sales: number;
+  }>;
 }
 
 interface MetricCardProps {
@@ -193,7 +208,9 @@ export default function AnalyticsPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string>('');
   const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [wooCommerceData, setWooCommerceData] = useState<WooCommerceData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [wooCommerceLoading, setWooCommerceLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState(0);
 
@@ -235,6 +252,38 @@ export default function AnalyticsPage() {
 
     fetchMetrics();
   }, [selectedDomain]);
+
+  useEffect(() => {
+    const fetchWooCommerceData = async () => {
+      if (!selectedDomain) return;
+
+      // Check if the selected domain has WooCommerce enabled
+      const domain = domains.find(d => d.domain === selectedDomain);
+      if (!domain?.woocommerce_enabled) {
+        setWooCommerceData(null);
+        return;
+      }
+
+      try {
+        setWooCommerceLoading(true);
+        const data = await domainService.getIntegrationDetails(selectedDomain, 'woocommerce');
+        if (data) {
+          setWooCommerceData(data);
+        } else {
+          setWooCommerceData(null);
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch WooCommerce data:', err);
+        setWooCommerceData(null);
+      } finally {
+        setWooCommerceLoading(false);
+      }
+    };
+
+    if (domains.length > 0) {
+      fetchWooCommerceData();
+    }
+  }, [selectedDomain, domains]);
 
   // Calculate trends
   const calculateTrend = (metricName: keyof Metric) => {
@@ -355,6 +404,176 @@ export default function AnalyticsPage() {
               subtitle="Unique visitors"
             />
           </SimpleGrid>
+
+          {/* WooCommerce Data Section */}
+          {domains.find(d => d.domain === selectedDomain)?.woocommerce_enabled && (
+            <>
+              <SectionHeading 
+                title="WooCommerce Data" 
+                subtitle={domains.find(d => d.domain === selectedDomain)?.name?.toUpperCase() || selectedDomain.toUpperCase()}
+              />
+              
+              {wooCommerceLoading ? (
+                <Flex justify="center" py={8}>
+                  <Spinner size="lg" color="teal.200" />
+                </Flex>
+              ) : wooCommerceData ? (
+                <Grid templateColumns={{ base: "1fr", lg: "2fr 1fr" }} gap={6} mb={8}>
+                  <GridItem>
+                    <Card
+                      bg={useColorModeValue('white', '#171923')}
+                      borderColor={useColorModeValue('gray.200', 'gray.700')}
+                      borderWidth="1px"
+                      borderRadius="lg"
+                      shadow="sm"
+                    >
+                      <CardHeader>
+                        <Heading size="md" color={headingColor}>Store Overview</Heading>
+                      </CardHeader>
+                      <CardBody>
+                        <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={6}>
+                          <MetricCard
+                            title="Today's Revenue"
+                            value={`${wooCommerceData.currency} 0.00`}
+                            subtitle="Last 24 hours"
+                          />
+                          <MetricCard
+                            title="Weekly Revenue"
+                            value={`${wooCommerceData.currency} 0.00`}
+                            subtitle="Last 7 days"
+                          />
+                          <MetricCard
+                            title="Today's Orders"
+                            value="0"
+                            subtitle="Last 24 hours"
+                          />
+                          <MetricCard
+                            title="Total Products"
+                            value="0"
+                            subtitle="Total products"
+                          />
+                        </SimpleGrid>
+                        
+                        <Divider my={6} borderColor={useColorModeValue('gray.200', 'gray.700')} />
+                        
+                        <VStack align="stretch" spacing={4}>
+                          <Flex justify="space-between" align="center">
+                            <Text fontSize="lg" fontWeight="semibold" color={headingColor}>
+                              Store Performance
+                            </Text>
+                            <Badge colorScheme="green" px={3} py={1} borderRadius="full">
+                              Connected
+                            </Badge>
+                          </Flex>
+                          
+                          <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4}>
+                            <Box>
+                              <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')} mb={1}>
+                                Total Orders
+                              </Text>
+                              <Text fontSize="2xl" fontWeight="bold" color="teal.200">
+                                {wooCommerceData.total_orders}
+                              </Text>
+                            </Box>
+                            <Box>
+                              <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')} mb={1}>
+                                Total Revenue
+                              </Text>
+                              <Text fontSize="2xl" fontWeight="bold" color="teal.200">
+                                {wooCommerceData.currency} {wooCommerceData.current_revenue.toFixed(2)}
+                              </Text>
+                              <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.500')}>
+                                From {wooCommerceData.total_orders} recent orders
+                              </Text>
+                            </Box>
+                          </SimpleGrid>
+                        </VStack>
+                      </CardBody>
+                    </Card>
+                  </GridItem>
+                  
+                  <GridItem>
+                    <Card
+                      bg={useColorModeValue('white', '#171923')}
+                      borderColor={useColorModeValue('gray.200', 'gray.700')}
+                      borderWidth="1px"
+                      borderRadius="lg"
+                      shadow="sm"
+                    >
+                      <CardHeader>
+                        <Heading size="md" color={headingColor}>Top Selling Products</Heading>
+                      </CardHeader>
+                      <CardBody>
+                        {wooCommerceData.top_products && wooCommerceData.top_products.length > 0 ? (
+                          <VStack spacing={4} align="stretch">
+                            {wooCommerceData.top_products.slice(0, 3).map((product, index) => (
+                              <Flex key={product.id} align="center" p={3} bg={useColorModeValue('gray.50', 'gray.800')} borderRadius="md">
+                                <Box mr={3} position="relative">
+                                  <Badge
+                                    position="absolute"
+                                    top="-8px"
+                                    left="-8px"
+                                    colorScheme="teal"
+                                    borderRadius="full"
+                                    fontSize="xs"
+                                    minW="20px"
+                                    h="20px"
+                                    display="flex"
+                                    alignItems="center"
+                                    justifyContent="center"
+                                  >
+                                    {index + 1}
+                                  </Badge>
+                                  <Image
+                                    src={product.image || '/placeholder-product.png'}
+                                    alt={product.name}
+                                    boxSize="50px"
+                                    objectFit="cover"
+                                    borderRadius="md"
+                                    fallbackSrc="/placeholder-product.png"
+                                  />
+                                </Box>
+                                <Box flex="1">
+                                  <Text fontSize="sm" fontWeight="medium" color={headingColor} noOfLines={2}>
+                                    {product.name}
+                                  </Text>
+                                  <Text fontSize="xs" color="teal.200" fontWeight="semibold">
+                                    {product.total_sales} sales
+                                  </Text>
+                                </Box>
+                              </Flex>
+                            ))}
+                          </VStack>
+                        ) : (
+                          <Text color={useColorModeValue('gray.500', 'gray.400')} textAlign="center" py={4}>
+                            No product data available
+                          </Text>
+                        )}
+                      </CardBody>
+                    </Card>
+                  </GridItem>
+                </Grid>
+              ) : (
+                <Card
+                  bg={useColorModeValue('gray.50', 'gray.800')}
+                  borderColor={useColorModeValue('gray.200', 'gray.700')}
+                  borderWidth="1px"
+                  borderRadius="lg"
+                  p={6}
+                  mb={8}
+                >
+                  <VStack spacing={3}>
+                    <Text color={useColorModeValue('gray.600', 'gray.400')} textAlign="center">
+                      WooCommerce integration is enabled but no data is available.
+                    </Text>
+                    <Text fontSize="sm" color={useColorModeValue('gray.500', 'gray.500')} textAlign="center">
+                      Please check your WooCommerce connection in the Integrations page.
+                    </Text>
+                  </VStack>
+                </Card>
+              )}
+            </>
+          )}
           
           <Tabs 
             variant="enclosed" 
