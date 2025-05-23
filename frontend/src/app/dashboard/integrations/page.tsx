@@ -60,8 +60,26 @@ interface WooCommerceConnection {
   secret: string;
   connected: boolean;
   store_name?: string;
-  product_count?: number;
-  last_order_date?: string;
+  total_orders?: number;
+  current_revenue?: {
+    amount: number;
+    currency: string;
+    from_orders: number;
+  };
+  top_products?: Array<{
+    name: string;
+    total_sales: number;
+    price: number;
+    image: string;
+    sku: string;
+    stock_status: string;
+  }>;
+  store_info?: {
+    currency: string;
+    country: string;
+    domain: string;
+  };
+  last_updated?: string;
 }
 
 interface GoogleAnalyticsConnection {
@@ -847,38 +865,99 @@ export default function IntegrationsPage() {
                         <Box p={4} bg={successBg} borderRadius="md">
                           <Heading size="sm" mb={3}>Connected WooCommerce Store</Heading>
                           
-                          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+                          {/* Store Overview */}
+                          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4} mb={6}>
                             <Box>
-                              <Text fontWeight="bold" fontSize="sm">Store Name</Text>
-                              <Text>{integrationState[domain.domain]?.woocommerce.store_name || domain.name}</Text>
+                              <Text fontWeight="bold" fontSize="sm" color="gray.600">Store Name</Text>
+                              <Text fontSize="lg" fontWeight="semibold">
+                                {integrationState[domain.domain]?.woocommerce?.store_name || domain.name}
+                              </Text>
                             </Box>
                             
-                            {integrationState[domain.domain]?.woocommerce.product_count !== undefined && (
-                              <Box>
-                                <Text fontWeight="bold" fontSize="sm">Products</Text>
-                                <Text>{integrationState[domain.domain]?.woocommerce.product_count}</Text>
-                              </Box>
-                            )}
+                            <Box>
+                              <Text fontWeight="bold" fontSize="sm" color="gray.600">Total Orders</Text>
+                              <Text fontSize="lg" fontWeight="semibold">
+                                {integrationState[domain.domain]?.woocommerce?.total_orders?.toLocaleString() || '0'}
+                              </Text>
+                            </Box>
                             
-                            {integrationState[domain.domain]?.woocommerce.last_order_date && (
-                              <Box>
-                                <Text fontWeight="bold" fontSize="sm">Last Order</Text>
-                                <Text>{new Date(integrationState[domain.domain]?.woocommerce.last_order_date || '').toLocaleDateString()}</Text>
-                              </Box>
-                            )}
+                            <Box>
+                              <Text fontWeight="bold" fontSize="sm" color="gray.600">Current Revenue</Text>
+                              <Text fontSize="lg" fontWeight="semibold">
+                                {integrationState[domain.domain]?.woocommerce?.current_revenue ? 
+                                  `${integrationState[domain.domain]?.woocommerce?.current_revenue?.currency} ${integrationState[domain.domain]?.woocommerce?.current_revenue?.amount?.toLocaleString()}` 
+                                  : 'N/A'
+                                }
+                              </Text>
+                              {integrationState[domain.domain]?.woocommerce?.current_revenue?.from_orders && (
+                                <Text fontSize="xs" color="gray.500">
+                                  From {integrationState[domain.domain]?.woocommerce?.current_revenue?.from_orders} recent orders
+                                </Text>
+                              )}
+                            </Box>
                           </SimpleGrid>
+                          
+                          {/* Top Products */}
+                          {integrationState[domain.domain]?.woocommerce?.top_products && 
+                           integrationState[domain.domain]?.woocommerce?.top_products.length > 0 && (
+                            <>
+                              <Divider my={4} borderColor="green.200" />
+                              <Box>
+                                <Heading size="xs" mb={3} color="gray.600">Top Selling Products</Heading>
+                                <SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+                                  {integrationState[domain.domain]?.woocommerce?.top_products?.slice(0, 3).map((product, index) => (
+                                    <Box key={index} p={3} bg="white" borderRadius="md" border="1px" borderColor="green.200">
+                                      <HStack spacing={3}>
+                                        {product.image && (
+                                          <Box
+                                            w="40px"
+                                            h="40px"
+                                            bg="gray.100"
+                                            borderRadius="md"
+                                            backgroundImage={`url(${product.image})`}
+                                            backgroundSize="cover"
+                                            backgroundPosition="center"
+                                          />
+                                        )}
+                                        <Box flex="1">
+                                          <Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
+                                            {product.name}
+                                          </Text>
+                                          <Text fontSize="xs" color="gray.600">
+                                            {product.total_sales} sales
+                                          </Text>
+                                          <Text fontSize="xs" fontWeight="bold">
+                                            {integrationState[domain.domain]?.woocommerce?.store_info?.currency || 'ZAR'} {product.price}
+                                          </Text>
+                                        </Box>
+                                      </HStack>
+                                    </Box>
+                                  )) || []}
+                                </SimpleGrid>
+                              </Box>
+                            </>
+                          )}
                           
                           <Divider my={4} borderColor="green.200" />
                           
-                          <Button 
-                            colorScheme="red" 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => handleDisconnect(domain.domain, 'woocommerce')}
-                            isLoading={connectionLoading[domain.domain]}
-                          >
-                            Disconnect Store
-                          </Button>
+                          <HStack justify="space-between" align="center">
+                            <Box>
+                              {integrationState[domain.domain]?.woocommerce?.last_updated && (
+                                <Text fontSize="xs" color="gray.500">
+                                  Last updated: {new Date(integrationState[domain.domain]?.woocommerce?.last_updated || '').toLocaleString()}
+                                </Text>
+                              )}
+                            </Box>
+                            <Button 
+                              colorScheme="red" 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => handleDisconnect(domain.domain, 'woocommerce')}
+                              isLoading={connectionLoading[domain.domain]}
+                            >
+                              Disconnect Store
+                            </Button>
+                          </HStack>
                         </Box>
                       ) : (
                         <>

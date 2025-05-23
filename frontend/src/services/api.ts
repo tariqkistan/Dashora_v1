@@ -170,6 +170,19 @@ export const domainService = {
     }
   },
   
+  deleteDomain: async (domain: string) => {
+    try {
+      const response = await api.delete(`/domains/${domain}`);
+      return {
+        success: true,
+        ...response.data
+      };
+    } catch (error) {
+      console.error('Error deleting domain:', error);
+      throw error;
+    }
+  },
+  
   getIntegrationDetails: async (domain: string, type: string) => {
     try {
       const response = await api.get(`/domains/${domain}/integrations/${type}`);

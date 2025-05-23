@@ -775,6 +775,7 @@ def handle_woocommerce_details(event, user_id):
         # Test the WooCommerce API connection to get store details
         try:
             import requests
+            from datetime import datetime, timedelta
             
             # Format the URL correctly
             store_url = f"https://{domain}"
@@ -782,8 +783,7 @@ def handle_woocommerce_details(event, user_id):
             # Parameters for WooCommerce API with authentication in query string
             params = {
                 'consumer_key': consumer_key,
-                'consumer_secret': consumer_secret,
-                'per_page': 5
+                'consumer_secret': consumer_secret
             }
             
             # Explicitly set headers to avoid any authorization header issues
@@ -793,57 +793,127 @@ def handle_woocommerce_details(event, user_id):
                 'Content-Type': 'application/json'
             }
             
-            # Get store information
-            products_url = f"{store_url}/wp-json/wc/v3/products"
-            products_response = requests.get(products_url, params=params, headers=headers, timeout=30)
+            print(f"Fetching WooCommerce data for {store_url}")
             
+            # 1. Get total number of orders
+            orders_url = f"{store_url}/wp-json/wc/v3/orders"
+            orders_params = {**params, 'per_page': 1, 'status': 'any'}
+            orders_response = requests.get(orders_url, params=orders_params, headers=headers, timeout=30)
+            
+            total_orders = 0
+            if orders_response.status_code == 200:
+                # Get total count from headers
+                total_orders = int(orders_response.headers.get('X-WP-Total', 0))
+                print(f"Total orders: {total_orders}")
+            
+            # 2. Get current revenue (completed orders)
+            # Calculate revenue from recent completed orders
+            revenue_params = {
+                **params, 
+                'per_page': 100,  # Get last 100 orders to calculate revenue
+                'status': 'completed',
+                'orderby': 'date',
+                'order': 'desc'
+            }
+            revenue_response = requests.get(orders_url, params=revenue_params, headers=headers, timeout=30)
+            
+            current_revenue = 0.0
+            currency = 'ZAR'
+            recent_orders_count = 0
+            
+            if revenue_response.status_code == 200:
+                orders_data = revenue_response.json()
+                for order in orders_data:
+                    # Sum up the total from completed orders
+                    order_total = float(order.get('total', 0))
+                    current_revenue += order_total
+                    recent_orders_count += 1
+                    
+                    # Get currency from first order
+                    if currency == 'ZAR' and order.get('currency'):
+                        currency = order.get('currency')
+                
+                print(f"Current revenue from {recent_orders_count} recent completed orders: {current_revenue} {currency}")
+            
+            # 3. Get top selling products
+            products_url = f"{store_url}/wp-json/wc/v3/products"
+            products_params = {
+                **params,
+                'per_page': 50,  # Get more products to analyze
+                'orderby': 'popularity',  # Order by popularity if supported
+                'order': 'desc'
+            }
+            products_response = requests.get(products_url, params=products_params, headers=headers, timeout=30)
+            
+            top_products = []
             if products_response.status_code == 200:
-                products = products_response.json()
-                product_count = len(products)
+                products_data = products_response.json()
                 
-                # Get recent orders
-                orders_url = f"{store_url}/wp-json/wc/v3/orders"
-                orders_params = {
-                    'consumer_key': consumer_key,
-                    'consumer_secret': consumer_secret,
-                    'per_page': 1
-                }
-                orders_response = requests.get(orders_url, params=orders_params, headers=headers, timeout=30)
+                # Sort products by total_sales (if available) or use the order from API
+                sorted_products = sorted(
+                    products_data, 
+                    key=lambda x: int(x.get('total_sales', 0)), 
+                    reverse=True
+                )
                 
-                if orders_response.status_code == 200:
-                    orders = orders_response.json()
-                    if orders:
-                        last_order_date = orders[0].get('date_created')
-                else:
-                    last_order_date = None
-                
-                return {
-                    'statusCode': 200,
-                    'headers': {
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
-                    },
-                    'body': json.dumps({
-                        'store_name': domain_data.get('name'),
-                        'product_count': product_count,
-                        'last_order_date': last_order_date,
-                        'connected': True
-                    }, default=str)
-                }
-            else:
-                # API connection failed
-                return {
-                    'statusCode': 400,
-                    'headers': {
-                        'Access-Control-Allow-Origin': '*',
-                        'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                        'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
-                    },
-                    'body': json.dumps({
-                        'error': f"WooCommerce API connection failed: {products_response.text}"
+                # Get top 3 products
+                for i, product in enumerate(sorted_products[:3]):
+                    top_products.append({
+                        'name': product.get('name', 'Unknown Product'),
+                        'total_sales': int(product.get('total_sales', 0)),
+                        'price': float(product.get('price', 0)),
+                        'image': product.get('images', [{}])[0].get('src', '') if product.get('images') else '',
+                        'sku': product.get('sku', ''),
+                        'stock_status': product.get('stock_status', 'unknown')
                     })
-                }
+                
+                print(f"Top {len(top_products)} selling products retrieved")
+            
+            # 4. Get store currency and basic info
+            settings_url = f"{store_url}/wp-json/wc/v3/settings/general"
+            settings_response = requests.get(settings_url, params=params, headers=headers, timeout=30)
+            
+            store_currency = currency
+            store_country = 'Unknown'
+            
+            if settings_response.status_code == 200:
+                settings_data = settings_response.json()
+                for setting in settings_data:
+                    if setting.get('id') == 'woocommerce_currency':
+                        store_currency = setting.get('value', currency)
+                    elif setting.get('id') == 'woocommerce_default_country':
+                        store_country = setting.get('value', 'Unknown')
+            
+            # Prepare the response with all the data
+            woocommerce_data = {
+                'store_name': domain_data.get('name', domain.split('.')[0].capitalize()),
+                'connected': True,
+                'total_orders': total_orders,
+                'current_revenue': {
+                    'amount': round(current_revenue, 2),
+                    'currency': store_currency,
+                    'from_orders': recent_orders_count
+                },
+                'top_products': top_products,
+                'store_info': {
+                    'currency': store_currency,
+                    'country': store_country,
+                    'domain': domain
+                },
+                'last_updated': datetime.utcnow().isoformat()
+            }
+            
+            print(f"WooCommerce data compiled: {json.dumps(woocommerce_data, indent=2)}")
+            
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+                },
+                'body': json.dumps(woocommerce_data, default=str)
+            }
         except Exception as e:
             import traceback
             print(f"Error fetching WooCommerce details: {str(e)}")
@@ -999,6 +1069,113 @@ def handle_add_domain(event, user_id):
             })
         }
 
+def handle_delete_domain(event, user_id):
+    """Handle delete domain request"""
+    try:
+        # Parse path parameters
+        path_params = event.get('pathParameters', {}) or {}
+        domain = path_params.get('domain')
+        
+        print(f"Delete domain request: domain={domain}, user_id={user_id}")
+        
+        if not domain:
+            return {
+                'statusCode': 400,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+                },
+                'body': json.dumps({
+                    'error': 'Domain parameter is required'
+                })
+            }
+        
+        # Connect to DynamoDB
+        dynamodb = boto3.resource('dynamodb')
+        domains_table = dynamodb.Table(DOMAINS_TABLE)
+        
+        # Check if domain exists and belongs to this user
+        response = domains_table.query(
+            KeyConditionExpression=Key('user_id').eq(user_id) & Key('domain_id').eq(domain)
+        )
+        
+        if response['Count'] == 0:
+            return {
+                'statusCode': 404,
+                'headers': {
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                    'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+                },
+                'body': json.dumps({
+                    'error': 'Domain not found or does not belong to this user'
+                })
+            }
+        
+        # Delete the domain
+        domains_table.delete_item(
+            Key={
+                'user_id': user_id,
+                'domain_id': domain
+            }
+        )
+        
+        print(f"Domain {domain} deleted for user {user_id}")
+        
+        # Also clean up any associated metrics data
+        try:
+            metrics_table = dynamodb.Table(METRICS_TABLE)
+            
+            # Query all metrics for this domain
+            metrics_response = metrics_table.query(
+                KeyConditionExpression=Key('domain_id').eq(domain)
+            )
+            
+            # Delete metrics in batches
+            with metrics_table.batch_writer() as batch:
+                for item in metrics_response['Items']:
+                    batch.delete_item(
+                        Key={
+                            'domain_id': item['domain_id'],
+                            'timestamp': item['timestamp']
+                        }
+                    )
+            
+            print(f"Cleaned up {len(metrics_response['Items'])} metrics records for domain {domain}")
+        except Exception as e:
+            print(f"Error cleaning up metrics for domain {domain}: {str(e)}")
+            # Continue even if metrics cleanup fails
+        
+        return {
+            'statusCode': 200,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+            },
+            'body': json.dumps({
+                'success': True,
+                'message': 'Domain deleted successfully'
+            })
+        }
+    except Exception as e:
+        import traceback
+        stack_trace = traceback.format_exc()
+        print(f"Error in delete domain handler: {str(e)}")
+        print(f"Stack trace: {stack_trace}")
+        return {
+            'statusCode': 500,
+            'headers': {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
+                'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
+            },
+            'body': json.dumps({
+                'error': f"Domain deletion error: {str(e)}"
+            })
+        }
+
 def lambda_handler(event, context):
     """Main Lambda handler function"""
     # Log full event for debugging
@@ -1070,6 +1247,11 @@ def lambda_handler(event, context):
                 response = handle_add_domain(event, user_id)
                 response['headers'] = {**headers, **response.get('headers', {})}
                 return response
+            elif http_method == 'DELETE':
+                print("Handling delete domain request")
+                response = handle_delete_domain(event, user_id)
+                response['headers'] = {**headers, **response.get('headers', {})}
+                return response
         
         # Handle test endpoint for debugging
         if path == '/test' and http_method == 'GET':
@@ -1125,6 +1307,13 @@ def lambda_handler(event, context):
         if path.startswith('/metrics/') and http_method == 'GET':
             print("Handling metrics request")
             response = handle_get_metrics(event, user_id)
+            response['headers'] = {**headers, **response.get('headers', {})}
+            return response
+        
+        # Handle individual domain deletion: DELETE /domains/{domain}
+        if path.startswith('/domains/') and http_method == 'DELETE':
+            print("Handling individual domain delete request")
+            response = handle_delete_domain(event, user_id)
             response['headers'] = {**headers, **response.get('headers', {})}
             return response
         

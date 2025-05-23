@@ -176,6 +176,13 @@ Resources:
             RestApiId: !Ref DashoraApiGateway
             Path: /domains
             Method: POST
+        # Delete domain endpoint
+        DeleteDomainEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /domains/{domain}
+            Method: DELETE
         # Metrics endpoint
         MetricsEndpoint:
           Type: Api

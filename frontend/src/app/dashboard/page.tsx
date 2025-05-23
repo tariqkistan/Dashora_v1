@@ -40,6 +40,19 @@ import {
   TableContainer,
   Alert,
   AlertIcon,
+  Button,
+  useDisclosure,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useToast,
+  IconButton,
+  Tooltip,
+  VStack
 } from '@chakra-ui/react';
 import {
   AreaChart,
@@ -59,6 +72,7 @@ import {
 } from 'recharts';
 import { domainService, metricsService } from '@/services/api';
 import { useChakraColor, CHART_COLOR } from '@/components/ui/theme-utils';
+import { DeleteIcon } from '@chakra-ui/icons';
 
 interface Domain {
   domain: string;
@@ -237,6 +251,8 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [wooCommerceData, setWooCommerceData] = useState<WooCommerceData | null>(null);
   const [wooCommerceLoading, setWooCommerceLoading] = useState(false);
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const toast = useToast();
 
   const headingColor = useColorModeValue('gray.700', 'white');
   const selectBg = useColorModeValue('white', '#171923');
@@ -367,6 +383,34 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDeleteDomain = async (domain: string) => {
+    try {
+      await domainService.deleteDomain(domain);
+      toast({
+        title: 'Domain Deleted',
+        description: 'The domain has been successfully deleted.',
+        status: 'success',
+        duration: 5000,
+        isClosable: true,
+      });
+      setDomains(domains.filter(d => d.domain !== domain));
+      if (selectedDomain === domain) {
+        setSelectedDomain('');
+        setSelectedDomainData(null);
+      }
+      onClose(); // Close the modal
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to delete domain');
+      toast({
+        title: 'Error',
+        description: err.response?.data?.error || 'Failed to delete domain',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    }
+  };
+
   if (loading) {
     return (
       <Flex height="calc(100vh - 80px)" align="center" justify="center">
@@ -385,302 +429,329 @@ export default function DashboardPage() {
 
   return (
     <Box maxW="1400px" mx="auto" py={5} px={{ base: 2, sm: 4, md: 6 }}>
-      <Flex mb={6} justifyContent="space-between" alignItems="center">
-        <Heading size="lg" mb={0} color={headingColor}>
-          Dashboard
-        </Heading>
-        <FormControl id="domain-select-form" maxW="300px">
-          <FormLabel htmlFor="domain-select">Select Domain</FormLabel>
-          <Select
-            id="domain-select"
-            name="domain-select"
-            value={selectedDomain}
-            onChange={(e) => setSelectedDomain(e.target.value)}
-            bg={selectBg}
-            borderColor={selectBorderColor}
-            aria-label="Select a domain to view its analytics"
-          >
-            {domains.map((domain) => (
-              <option key={domain.domain} value={domain.domain}>
-                {domain.name} ({domain.domain})
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-      </Flex>
+      <VStack spacing={6} align="stretch">
+        <HStack justify="space-between" align="center">
+          <Heading size="lg" color={headingColor}>Analytics Dashboard</Heading>
+          <HStack spacing={4}>
+            <Text fontSize="sm" color="gray.500">Select Domain:</Text>
+            <Select 
+              value={selectedDomain} 
+              onChange={(e) => setSelectedDomain(e.target.value)}
+              width="200px"
+              title="Select domain to view analytics"
+              aria-label="Select domain to view analytics"
+            >
+              {domains.map((domain) => (
+                <option key={domain.domain} value={domain.domain}>
+                  {domain.name}
+                </option>
+              ))}
+            </Select>
+            {selectedDomain && (
+              <Tooltip label="Delete Domain" hasArrow>
+                <IconButton
+                  aria-label="Delete domain"
+                  icon={<DeleteIcon />}
+                  colorScheme="red"
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpen}
+                />
+              </Tooltip>
+            )}
+          </HStack>
+        </HStack>
 
-      {metrics.length > 0 && (
-        <>
-          <SectionHeading 
-            title="Performance Metrics" 
-            subtitle={`Last Updated: ${new Date().toLocaleDateString()}`} 
-          />
-          
-          <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={5} mb={8}>
-            <MetricCard
-              title="Total Revenue"
-              value={`$${metrics[0].revenue.toFixed(2)}`}
-              change={3.2}
-              subtitle="This month"
+        {metrics.length > 0 && (
+          <>
+            <SectionHeading 
+              title="Performance Metrics" 
+              subtitle={`Last Updated: ${new Date().toLocaleDateString()}`} 
             />
-            <MetricCard
-              title="Orders"
-              value={metrics[0].orders}
-              change={-1.5}
-              subtitle="vs last month"
-            />
-            <MetricCard
-              title="Page Views"
-              value={metrics[0].pageviews.toLocaleString()}
-              change={15.1}
-              subtitle="Total visits"
-            />
-            <MetricCard
-              title="Visitors"
-              value={metrics[0].visitors.toLocaleString()}
-              change={8.4}
-              subtitle="Unique visitors"
-            />
-          </SimpleGrid>
-          
-          {/* WooCommerce section - only appears when WooCommerce is enabled */}
-          {selectedDomainData?.woocommerce_enabled && (
-            <>
-              <SectionHeading 
-                title="WooCommerce Data" 
-                subtitle={wooCommerceData?.store_name || ""}
+            
+            <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={5} mb={8}>
+              <MetricCard
+                title="Total Revenue"
+                value={`$${metrics[0].revenue.toFixed(2)}`}
+                change={3.2}
+                subtitle="This month"
               />
-              
-              {wooCommerceLoading ? (
-                <Flex justify="center" my={6}>
-                  <Spinner />
-                </Flex>
-              ) : wooCommerceData ? (
-                <>
-                  <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={5} mb={8}>
-                    <MetricCard
-                      title="Today's Revenue"
-                      value={`$${wooCommerceData.revenue_today.toFixed(2)}`}
-                      subtitle="Last 24 hours"
-                    />
-                    <MetricCard
-                      title="Weekly Revenue"
-                      value={`$${wooCommerceData.revenue_week.toFixed(2)}`}
-                      subtitle="Last 7 days"
-                    />
-                    <MetricCard
-                      title="Today's Orders"
-                      value={wooCommerceData.orders_today}
-                      subtitle="Last 24 hours"
-                    />
-                    <MetricCard
-                      title="Products"
-                      value={wooCommerceData.product_count}
-                      subtitle="Total products"
-                    />
-                  </SimpleGrid>
-                  
-                  <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={6} mb={8}>
-                    <ChartCard title="Recent Orders">
-                      <TableContainer>
-                        <Table variant="simple" size="sm">
-                          <Thead>
-                            <Tr>
-                              <Th>Order ID</Th>
-                              <Th>Date</Th>
-                              <Th>Status</Th>
-                              <Th isNumeric>Total</Th>
-                            </Tr>
-                          </Thead>
-                          <Tbody>
-                            {wooCommerceData.recent_orders.map(order => (
-                              <Tr key={order.id}>
-                                <Td>#{order.id}</Td>
-                                <Td>{new Date(order.date_created).toLocaleDateString()}</Td>
-                                <Td>
-                                  <Badge
-                                    colorScheme={
-                                      order.status === 'completed' ? 'green' : 
-                                      order.status === 'processing' ? 'blue' : 'yellow'
-                                    }
-                                  >
-                                    {order.status}
-                                  </Badge>
-                                </Td>
-                                <Td isNumeric>{order.total}</Td>
-                              </Tr>
-                            ))}
-                          </Tbody>
-                        </Table>
-                      </TableContainer>
-                    </ChartCard>
+              <MetricCard
+                title="Orders"
+                value={metrics[0].orders}
+                change={-1.5}
+                subtitle="vs last month"
+              />
+              <MetricCard
+                title="Page Views"
+                value={metrics[0].pageviews.toLocaleString()}
+                change={15.1}
+                subtitle="Total visits"
+              />
+              <MetricCard
+                title="Visitors"
+                value={metrics[0].visitors.toLocaleString()}
+                change={8.4}
+                subtitle="Unique visitors"
+              />
+            </SimpleGrid>
+            
+            {/* WooCommerce section - only appears when WooCommerce is enabled */}
+            {selectedDomainData?.woocommerce_enabled && (
+              <>
+                <SectionHeading 
+                  title="WooCommerce Data" 
+                  subtitle={wooCommerceData?.store_name || ""}
+                />
+                
+                {wooCommerceLoading ? (
+                  <Flex justify="center" my={6}>
+                    <Spinner />
+                  </Flex>
+                ) : wooCommerceData ? (
+                  <>
+                    <SimpleGrid columns={{ base: 1, sm: 2, md: 4 }} spacing={5} mb={8}>
+                      <MetricCard
+                        title="Today's Revenue"
+                        value={`$${wooCommerceData.revenue_today.toFixed(2)}`}
+                        subtitle="Last 24 hours"
+                      />
+                      <MetricCard
+                        title="Weekly Revenue"
+                        value={`$${wooCommerceData.revenue_week.toFixed(2)}`}
+                        subtitle="Last 7 days"
+                      />
+                      <MetricCard
+                        title="Today's Orders"
+                        value={wooCommerceData.orders_today}
+                        subtitle="Last 24 hours"
+                      />
+                      <MetricCard
+                        title="Products"
+                        value={wooCommerceData.product_count}
+                        subtitle="Total products"
+                      />
+                    </SimpleGrid>
                     
-                    <ChartCard title="Top Products">
-                      <TableContainer>
-                        <Table variant="simple" size="sm">
-                          <Thead>
-                            <Tr>
-                              <Th>Product</Th>
-                              <Th isNumeric>Price</Th>
-                              <Th isNumeric>Stock</Th>
-                              <Th isNumeric>Sales</Th>
-                            </Tr>
-                          </Thead>
-                          <Tbody>
-                            {wooCommerceData.recent_products.map(product => (
-                              <Tr key={product.id}>
-                                <Td>{product.name}</Td>
-                                <Td isNumeric>{product.price}</Td>
-                                <Td isNumeric>{product.stock_quantity}</Td>
-                                <Td isNumeric>{product.total_sales}</Td>
+                    <Grid templateColumns={{ base: "1fr", lg: "1fr 1fr" }} gap={6} mb={8}>
+                      <ChartCard title="Recent Orders">
+                        <TableContainer>
+                          <Table variant="simple" size="sm">
+                            <Thead>
+                              <Tr>
+                                <Th>Order ID</Th>
+                                <Th>Date</Th>
+                                <Th>Status</Th>
+                                <Th isNumeric>Total</Th>
                               </Tr>
-                            ))}
-                          </Tbody>
-                        </Table>
-                      </TableContainer>
-                    </ChartCard>
-                  </Grid>
-                </>
-              ) : (
-                <Alert status="info" mb={8}>
-                  <AlertIcon />
-                  <Text>
-                    WooCommerce is enabled, but no data is available yet. Please check your integration settings.
-                  </Text>
-                </Alert>
-              )}
-            </>
-          )}
-          
-          <Tabs 
-            variant="enclosed" 
-            colorScheme="teal" 
-            mb={8}
-            onChange={(index) => setActiveTab(index)}
-          >
-            <TabList>
-              <Tab>Traffic & Revenue</Tab>
-              <Tab>Keyword Rankings</Tab>
-            </TabList>
-            <TabPanels>
-              <TabPanel p={0} pt={6}>
-                <Grid templateColumns={{ base: "1fr", lg: "2fr 1fr" }} gap={6} mb={8}>
-                  <GridItem>
-                    <ChartCard title="Revenue Trend">
-                      <Box height="300px">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart
-                            data={metrics.slice().reverse()}
-                            margin={{
-                              top: 10,
-                              right: 30,
-                              left: 0,
-                              bottom: 0,
-                            }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                            <XAxis
-                              dataKey="timestamp"
-                              tickFormatter={(timestamp) =>
-                                new Date(timestamp * 1000).toLocaleDateString()
-                              }
-                            />
-                            <YAxis />
-                            <RechartsTooltip
-                              labelFormatter={(timestamp) =>
-                                new Date(timestamp * 1000).toLocaleDateString()
-                              }
-                            />
-                            <Area
-                              type="monotone"
-                              dataKey="revenue"
-                              stroke={CHART_COLOR}
-                              fill="rgba(129, 230, 217, 0.2)"
-                            />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </Box>
-                    </ChartCard>
-                  </GridItem>
-                  <GridItem>
-                    <ChartCard title="Traffic Sources">
-                      <Box height="300px">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <PieChart>
-                            <Pie
-                              data={trafficSources}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={60}
-                              outerRadius={90}
-                              paddingAngle={5}
-                              dataKey="value"
-                              label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                            >
-                              {trafficSources.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            </Thead>
+                            <Tbody>
+                              {wooCommerceData.recent_orders.map(order => (
+                                <Tr key={order.id}>
+                                  <Td>#{order.id}</Td>
+                                  <Td>{new Date(order.date_created).toLocaleDateString()}</Td>
+                                  <Td>
+                                    <Badge
+                                      colorScheme={
+                                        order.status === 'completed' ? 'green' : 
+                                        order.status === 'processing' ? 'blue' : 'yellow'
+                                      }
+                                    >
+                                      {order.status}
+                                    </Badge>
+                                  </Td>
+                                  <Td isNumeric>{order.total}</Td>
+                                </Tr>
                               ))}
-                            </Pie>
-                            <RechartsTooltip />
-                          </PieChart>
-                        </ResponsiveContainer>
-                      </Box>
-                    </ChartCard>
-                  </GridItem>
-                </Grid>
-              </TabPanel>
-              
-              <TabPanel p={0} pt={6}>
-                <ChartCard title="Top Keywords Performance">
-                  <Box overflowX="auto">
-                    <Flex direction="column" width="100%">
-                      <Flex 
-                        py={2} 
-                        borderBottomWidth="1px" 
-                        borderColor={useColorModeValue('gray.200', 'gray.700')}
-                        fontWeight="bold"
-                      >
-                        <Box width="50%">Keyword</Box>
-                        <Box width="25%" textAlign="center">Position</Box>
-                        <Box width="25%" textAlign="center">Change</Box>
-                      </Flex>
-                      {keywordData.map((item, index) => (
-                        <Flex 
-                          key={index} 
-                          py={3} 
-                          borderBottomWidth="1px" 
-                          borderColor={useColorModeValue('gray.100', 'gray.800')}
-                          _hover={{ bg: useColorModeValue('gray.50', 'gray.900') }}
-                        >
-                          <Box width="50%">{item.keyword}</Box>
-                          <Box width="25%" textAlign="center">{item.position}</Box>
-                          <Box width="25%" textAlign="center">
-                            <Badge 
-                              colorScheme={item.change > 0 ? "green" : item.change < 0 ? "red" : "gray"}
-                              borderRadius="full"
-                              px={2}
-                              py={0.5}
+                            </Tbody>
+                          </Table>
+                        </TableContainer>
+                      </ChartCard>
+                      
+                      <ChartCard title="Top Products">
+                        <TableContainer>
+                          <Table variant="simple" size="sm">
+                            <Thead>
+                              <Tr>
+                                <Th>Product</Th>
+                                <Th isNumeric>Price</Th>
+                                <Th isNumeric>Stock</Th>
+                                <Th isNumeric>Sales</Th>
+                              </Tr>
+                            </Thead>
+                            <Tbody>
+                              {wooCommerceData.recent_products.map(product => (
+                                <Tr key={product.id}>
+                                  <Td>{product.name}</Td>
+                                  <Td isNumeric>{product.price}</Td>
+                                  <Td isNumeric>{product.stock_quantity}</Td>
+                                  <Td isNumeric>{product.total_sales}</Td>
+                                </Tr>
+                              ))}
+                            </Tbody>
+                          </Table>
+                        </TableContainer>
+                      </ChartCard>
+                    </Grid>
+                  </>
+                ) : (
+                  <Alert status="info" mb={8}>
+                    <AlertIcon />
+                    <Text>
+                      WooCommerce is enabled, but no data is available yet. Please check your integration settings.
+                    </Text>
+                  </Alert>
+                )}
+              </>
+            )}
+            
+            <Tabs 
+              variant="enclosed" 
+              colorScheme="teal" 
+              mb={8}
+              onChange={(index) => setActiveTab(index)}
+            >
+              <TabList>
+                <Tab>Traffic & Revenue</Tab>
+                <Tab>Keyword Rankings</Tab>
+              </TabList>
+              <TabPanels>
+                <TabPanel p={0} pt={6}>
+                  <Grid templateColumns={{ base: "1fr", lg: "2fr 1fr" }} gap={6} mb={8}>
+                    <GridItem>
+                      <ChartCard title="Revenue Trend">
+                        <Box height="300px">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart
+                              data={metrics.slice().reverse()}
+                              margin={{
+                                top: 10,
+                                right: 30,
+                                left: 0,
+                                bottom: 0,
+                              }}
                             >
-                              <Flex alignItems="center">
-                                {item.change !== 0 && (
-                                  <Stat display="inline" p={0} m={0}>
-                                    <StatArrow type={item.change > 0 ? "increase" : "decrease"} />
-                                  </Stat>
-                                )}
-                                {item.change === 0 ? '–' : Math.abs(item.change)}
-                              </Flex>
-                            </Badge>
-                          </Box>
+                              <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                              <XAxis
+                                dataKey="timestamp"
+                                tickFormatter={(timestamp) =>
+                                  new Date(timestamp * 1000).toLocaleDateString()
+                                }
+                              />
+                              <YAxis />
+                              <RechartsTooltip
+                                labelFormatter={(timestamp) =>
+                                  new Date(timestamp * 1000).toLocaleDateString()
+                                }
+                              />
+                              <Area
+                                type="monotone"
+                                dataKey="revenue"
+                                stroke={CHART_COLOR}
+                                fill="rgba(129, 230, 217, 0.2)"
+                              />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        </Box>
+                      </ChartCard>
+                    </GridItem>
+                    <GridItem>
+                      <ChartCard title="Traffic Sources">
+                        <Box height="300px">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={trafficSources}
+                                cx="50%"
+                                cy="50%"
+                                innerRadius={60}
+                                outerRadius={90}
+                                paddingAngle={5}
+                                dataKey="value"
+                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                              >
+                                {trafficSources.map((entry, index) => (
+                                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <RechartsTooltip />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </Box>
+                      </ChartCard>
+                    </GridItem>
+                  </Grid>
+                </TabPanel>
+                
+                <TabPanel p={0} pt={6}>
+                  <ChartCard title="Top Keywords Performance">
+                    <Box overflowX="auto">
+                      <Flex direction="column" width="100%">
+                        <Flex 
+                          py={2} 
+                          borderBottomWidth="1px" 
+                          borderColor={useColorModeValue('gray.200', 'gray.700')}
+                          fontWeight="bold"
+                        >
+                          <Box width="50%">Keyword</Box>
+                          <Box width="25%" textAlign="center">Position</Box>
+                          <Box width="25%" textAlign="center">Change</Box>
                         </Flex>
-                      ))}
-                    </Flex>
-                  </Box>
-                </ChartCard>
-              </TabPanel>
-            </TabPanels>
-          </Tabs>
-        </>
-      )}
+                        {keywordData.map((item, index) => (
+                          <Flex 
+                            key={index} 
+                            py={3} 
+                            borderBottomWidth="1px" 
+                            borderColor={useColorModeValue('gray.100', 'gray.800')}
+                            _hover={{ bg: useColorModeValue('gray.50', 'gray.900') }}
+                          >
+                            <Box width="50%">{item.keyword}</Box>
+                            <Box width="25%" textAlign="center">{item.position}</Box>
+                            <Box width="25%" textAlign="center">
+                              <Badge 
+                                colorScheme={item.change > 0 ? "green" : item.change < 0 ? "red" : "gray"}
+                                borderRadius="full"
+                                px={2}
+                                py={0.5}
+                              >
+                                <Flex alignItems="center">
+                                  {item.change !== 0 && (
+                                    <Stat display="inline" p={0} m={0}>
+                                      <StatArrow type={item.change > 0 ? "increase" : "decrease"} />
+                                    </Stat>
+                                  )}
+                                  {item.change === 0 ? '–' : Math.abs(item.change)}
+                                </Flex>
+                              </Badge>
+                            </Box>
+                          </Flex>
+                        ))}
+                      </Flex>
+                    </Box>
+                  </ChartCard>
+                </TabPanel>
+              </TabPanels>
+            </Tabs>
+          </>
+        )}
+      </VStack>
+
+      <Modal isOpen={isOpen} onClose={onClose}>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>Delete Domain</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            Are you sure you want to delete this domain? This action cannot be undone.
+          </ModalBody>
+          <ModalFooter>
+            <Button colorScheme="red" mr={3} onClick={() => handleDeleteDomain(selectedDomain)}>
+              Delete
+            </Button>
+            <Button onClick={onClose}>Cancel</Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </Box>
   );
 } 
