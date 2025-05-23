@@ -267,14 +267,16 @@ export default function AnalyticsPage() {
       try {
         setWooCommerceLoading(true);
         const data = await domainService.getIntegrationDetails(selectedDomain, 'woocommerce');
-        if (data) {
-          setWooCommerceData(data);
+        setWooCommerceData(data);
+      } catch (err: any) {
+        console.error('Failed to fetch WooCommerce data:', err);
+        // Only set to null if it's a real error, not a timeout
+        if (err.message?.includes('timeout') || err.message?.includes('Network error')) {
+          console.log('WooCommerce data fetch timed out, retrying...');
+          // Don't set to null, keep the loading state for retry
         } else {
           setWooCommerceData(null);
         }
-      } catch (err: any) {
-        console.error('Failed to fetch WooCommerce data:', err);
-        setWooCommerceData(null);
       } finally {
         setWooCommerceLoading(false);
       }

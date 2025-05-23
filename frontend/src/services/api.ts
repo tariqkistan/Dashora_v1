@@ -11,7 +11,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 10000, // 10 seconds timeout
+  timeout: 60000, // 60 seconds timeout to match Lambda timeout
 });
 
 // Type for API error response
@@ -188,9 +188,9 @@ export const domainService = {
       const response = await api.get(`/domains/${domain}/integrations/${type}`);
       return response.data;
     } catch (error) {
-      // If the endpoint doesn't exist yet or returns an error, we'll just return null
+      // Log the error for debugging but re-throw it so the UI can handle it properly
       console.error(`Error fetching integration details for ${domain}/${type}:`, error);
-      return null;
+      throw error;
     }
   },
   
