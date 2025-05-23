@@ -73,7 +73,11 @@ interface Metric {
 interface WooCommerceData {
   store_name: string;
   total_orders: number;
-  current_revenue: number;
+  current_revenue: {
+    amount: number;
+    currency: string;
+    from_orders: number;
+  };
   currency: string;
   top_products: Array<{
     id: number;
@@ -436,12 +440,12 @@ export default function AnalyticsPage() {
                         <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={6}>
                           <MetricCard
                             title="Today's Revenue"
-                            value={`${wooCommerceData.currency} 0.00`}
+                            value={`${wooCommerceData.current_revenue.currency} 0.00`}
                             subtitle="Last 24 hours"
                           />
                           <MetricCard
                             title="Weekly Revenue"
-                            value={`${wooCommerceData.currency} 0.00`}
+                            value={`${wooCommerceData.current_revenue.currency} 0.00`}
                             subtitle="Last 7 days"
                           />
                           <MetricCard
@@ -482,10 +486,10 @@ export default function AnalyticsPage() {
                                 Total Revenue
                               </Text>
                               <Text fontSize="2xl" fontWeight="bold" color="teal.200">
-                                {wooCommerceData.currency} {wooCommerceData.current_revenue.toFixed(2)}
+                                {wooCommerceData.current_revenue.currency} {wooCommerceData.current_revenue.amount.toFixed(2)}
                               </Text>
                               <Text fontSize="xs" color={useColorModeValue('gray.500', 'gray.500')}>
-                                From {wooCommerceData.total_orders} recent orders
+                                From {wooCommerceData.current_revenue.from_orders} recent orders
                               </Text>
                             </Box>
                           </SimpleGrid>
