@@ -171,9 +171,13 @@ export default function IntegrationsPage() {
       
       setIntegrationState(initialState);
       
+      // Define mock domains that should be skipped for real API calls
+      const mockDomains = ['example.com', 'test-store.com'];
+      
       // For domains with enabled WooCommerce, fetch additional connection details
+      // Only fetch for real domains, not mock ones
       for (const domain of domains) {
-        if (domain.woocommerce_enabled) {
+        if (domain.woocommerce_enabled && !mockDomains.includes(domain.domain)) {
           try {
             // Get connection details if WooCommerce is already enabled
             const details = await domainService.getIntegrationDetails(domain.domain, 'woocommerce');
@@ -191,8 +195,19 @@ export default function IntegrationsPage() {
                 }
               }));
             }
-          } catch (err) {
+          } catch (err: any) {
             console.error(`Error fetching WooCommerce details for ${domain.domain}:`, err);
+            // For real domains that fail, mark as disconnected
+            setIntegrationState(prev => ({
+              ...prev,
+              [domain.domain]: {
+                ...(prev[domain.domain] || {}),
+                woocommerce: {
+                  ...(prev[domain.domain]?.woocommerce || {}),
+                  connected: false
+                }
+              }
+            }));
           }
         }
       }
@@ -239,6 +254,35 @@ export default function IntegrationsPage() {
     setConnectionLoading(prev => ({...prev, [domain]: true}));
     
     try {
+      // Define mock domains that should be handled locally
+      const mockDomains = ['example.com', 'test-store.com'];
+      
+      if (mockDomains.includes(domain)) {
+        // For mock domains, just update the state locally without API call
+        setIntegrationState(prev => ({
+          ...prev,
+          [domain]: {
+            ...prev[domain],
+            woocommerce: {
+              ...prev[domain].woocommerce,
+              connected: true,
+              store_name: domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1) + ' Store',
+              product_count: 25,
+              last_order_date: new Date().toISOString()
+            }
+          }
+        }));
+        
+        toast({
+          title: 'WooCommerce Connected',
+          description: `Successfully connected ${domain} to WooCommerce (Demo)`,
+          status: 'success',
+          duration: 5000,
+          isClosable: true,
+        });
+        return;
+      }
+      
       // Prepare the credentials to connect
       const credentials = {
         domain: integration.url || domain, // Use the provided URL or domain name
@@ -293,7 +337,38 @@ export default function IntegrationsPage() {
     setConnectionLoading(prev => ({...prev, [domain]: true}));
     
     try {
-      // Call API to disconnect WooCommerce
+      // Define mock domains that should be handled locally
+      const mockDomains = ['example.com', 'test-store.com'];
+      
+      if (mockDomains.includes(domain)) {
+        // For mock domains, just update the state locally without API call
+        setIntegrationState(prev => ({
+          ...prev,
+          [domain]: {
+            ...prev[domain],
+            woocommerce: {
+              url: domain,
+              key: '',
+              secret: '',
+              connected: false,
+              store_name: undefined,
+              product_count: undefined,
+              last_order_date: undefined
+            }
+          }
+        }));
+        
+        toast({
+          title: 'WooCommerce Disconnected',
+          description: `Successfully disconnected ${domain} from WooCommerce`,
+          status: 'info',
+          duration: 5000,
+          isClosable: true,
+        });
+        return;
+      }
+      
+      // For real domains, call the API
       const result = await domainService.disconnectIntegration(domain, 'woocommerce');
       
       if (result.success) {
