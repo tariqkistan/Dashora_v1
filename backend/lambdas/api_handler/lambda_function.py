@@ -438,6 +438,9 @@ def handle_woocommerce_connect(event, user_id):
         
         print(f"WooCommerce connect request for domain: {domain}")
         print(f"Store domain: {store_domain}")
+        print(f"User ID: {user_id}")
+        print(f"Consumer key: {consumer_key[:10]}..." if consumer_key else "None")
+        print(f"Consumer secret: {consumer_secret[:10]}..." if consumer_secret else "None")
         
         if not domain or not consumer_key or not consumer_secret:
             return {
@@ -457,9 +460,14 @@ def handle_woocommerce_connect(event, user_id):
         domains_table = dynamodb.Table(DOMAINS_TABLE)
         
         # First, verify that the domain exists and belongs to the user
+        print(f"Checking if domain exists: user_id={user_id}, domain_id={domain}")
         response = domains_table.query(
             KeyConditionExpression=Key('user_id').eq(user_id) & Key('domain_id').eq(domain)
         )
+        
+        print(f"Domain existence check: Count={response['Count']}")
+        if response['Count'] > 0:
+            print(f"Existing domain data: {response['Items'][0]}")
         
         if response['Count'] == 0:
             return {
@@ -476,11 +484,11 @@ def handle_woocommerce_connect(event, user_id):
         
         # Store WooCommerce credentials in domain record
         try:
-            dynamodb = boto3.resource('dynamodb')
-            domains_table = dynamodb.Table(DOMAINS_TABLE)
+            from datetime import datetime
+            print(f"Storing WooCommerce credentials for user_id={user_id}, domain_id={domain}")
             
             # Update domain with WooCommerce credentials
-            domains_table.update_item(
+            update_response = domains_table.update_item(
                 Key={
                     'user_id': user_id,
                     'domain_id': domain
@@ -491,12 +499,16 @@ def handle_woocommerce_connect(event, user_id):
                     ':secret': consumer_secret,
                     ':enabled': True,
                     ':updated_at': int(datetime.utcnow().timestamp())
-                }
+                },
+                ReturnValues='ALL_NEW'
             )
             
-            print(f"WooCommerce credentials stored for domain: {domain}")
+            print(f"WooCommerce credentials stored successfully for domain: {domain}")
+            print(f"Updated item: {update_response.get('Attributes', {})}")
         except Exception as e:
             print(f"Error storing WooCommerce credentials: {str(e)}")
+            import traceback
+            print(f"Traceback: {traceback.format_exc()}")
             # Continue with the connection test even if storage fails
         
         # Test the WooCommerce API connection
@@ -703,6 +715,8 @@ def handle_woocommerce_details(event, user_id):
         domain = path_params.get('domain')
         
         print(f"WooCommerce details request for domain: {domain}")
+        print(f"User ID: {user_id}")
+        print(f"Path params: {path_params}")
         
         if not domain:
             return {
@@ -722,9 +736,20 @@ def handle_woocommerce_details(event, user_id):
         domains_table = dynamodb.Table(DOMAINS_TABLE)
         
         # Get domain data
+        print(f"Querying DynamoDB for user_id: {user_id}, domain_id: {domain}")
         response = domains_table.query(
             KeyConditionExpression=Key('user_id').eq(user_id) & Key('domain_id').eq(domain)
         )
+        
+        print(f"DynamoDB query response: Count={response['Count']}")
+        if response['Count'] > 0:
+            print(f"Domain data found: {response['Items'][0]}")
+        else:
+            # Let's also try to scan all domains for this user to see what's available
+            scan_response = domains_table.query(
+                KeyConditionExpression=Key('user_id').eq(user_id)
+            )
+            print(f"All domains for user {user_id}: {[item.get('domain_id') for item in scan_response['Items']]}")
         
         if response['Count'] == 0:
             return {
@@ -740,6 +765,7 @@ def handle_woocommerce_details(event, user_id):
             }
         
         domain_data = response['Items'][0]
+        print(f"Domain data retrieved: {domain_data}")
         
         # Check if WooCommerce is enabled
         if not domain_data.get('woocommerce_enabled', False):
@@ -758,6 +784,8 @@ def handle_woocommerce_details(event, user_id):
         # Get WooCommerce credentials
         consumer_key = domain_data.get('wc_consumer_key')
         consumer_secret = domain_data.get('wc_consumer_secret')
+        
+        print(f"WooCommerce credentials found: key={bool(consumer_key)}, secret={bool(consumer_secret)}")
         
         if not consumer_key or not consumer_secret:
             return {

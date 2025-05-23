@@ -144,66 +144,66 @@ export default function IntegrationsPage() {
   const successBg = useColorModeValue('green.50', 'green.900');
   const modalBg = useColorModeValue('white', 'gray.800');
   
-  useEffect(() => {
-    const fetchDomains = async () => {
-      try {
-        setLoading(true);
-        const { domains } = await domainService.getDomains();
-        setDomains(domains);
-        
-        // Initialize state with existing integration data from domains
-        const initialState: IntegrationState = {};
-        domains.forEach((domain: Domain) => {
-          initialState[domain.domain] = {
-            woocommerce: {
-              url: domain.domain,
-              key: '',
-              secret: '',
-              connected: domain.woocommerce_enabled,
-              store_name: domain.woocommerce_enabled ? domain.name : undefined,
-            },
-            googleAnalytics: {
-              measurementId: '',
-              apiSecret: '',
-              connected: domain.ga_enabled
-            }
-          };
-        });
-        
-        setIntegrationState(initialState);
-        
-        // For domains with enabled WooCommerce, fetch additional connection details
-        domains.forEach(async (domain: Domain) => {
-          if (domain.woocommerce_enabled) {
-            try {
-              // Get connection details if WooCommerce is already enabled
-              const details = await domainService.getIntegrationDetails(domain.domain, 'woocommerce');
-              
-              if (details) {
-                setIntegrationState(prev => ({
-                  ...prev,
-                  [domain.domain]: {
-                    ...prev[domain.domain],
-                    woocommerce: {
-                      ...prev[domain.domain].woocommerce,
-                      ...details,
-                      connected: true
-                    }
-                  }
-                }));
-              }
-            } catch (err) {
-              console.error(`Error fetching WooCommerce details for ${domain.domain}:`, err);
-            }
+  const fetchDomains = async () => {
+    try {
+      setLoading(true);
+      const { domains } = await domainService.getDomains();
+      setDomains(domains);
+      
+      // Initialize state with existing integration data from domains
+      const initialState: IntegrationState = {};
+      domains.forEach((domain: Domain) => {
+        initialState[domain.domain] = {
+          woocommerce: {
+            url: domain.domain,
+            key: '',
+            secret: '',
+            connected: domain.woocommerce_enabled,
+            store_name: domain.woocommerce_enabled ? domain.name : undefined,
+          },
+          googleAnalytics: {
+            measurementId: '',
+            apiSecret: '',
+            connected: domain.ga_enabled
           }
-        });
-      } catch (err: any) {
-        setError(err.response?.data?.error || 'Failed to fetch domains');
-      } finally {
-        setLoading(false);
+        };
+      });
+      
+      setIntegrationState(initialState);
+      
+      // For domains with enabled WooCommerce, fetch additional connection details
+      for (const domain of domains) {
+        if (domain.woocommerce_enabled) {
+          try {
+            // Get connection details if WooCommerce is already enabled
+            const details = await domainService.getIntegrationDetails(domain.domain, 'woocommerce');
+            
+            if (details) {
+              setIntegrationState(prev => ({
+                ...prev,
+                [domain.domain]: {
+                  ...(prev[domain.domain] || {}),
+                  woocommerce: {
+                    ...(prev[domain.domain]?.woocommerce || {}),
+                    ...details,
+                    connected: true
+                  }
+                }
+              }));
+            }
+          } catch (err) {
+            console.error(`Error fetching WooCommerce details for ${domain.domain}:`, err);
+          }
+        }
       }
-    };
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to fetch domains');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchDomains();
   }, []);
   
@@ -565,29 +565,7 @@ export default function IntegrationsPage() {
         }
         
         // Refresh the domains list
-        const { domains: updatedDomains } = await domainService.getDomains();
-        setDomains(updatedDomains);
-        
-        // Initialize state with existing integration data from domains
-        const initialState: IntegrationState = {};
-        updatedDomains.forEach((domain: Domain) => {
-          initialState[domain.domain] = {
-            woocommerce: {
-              url: domain.domain,
-              key: '',
-              secret: '',
-              connected: domain.woocommerce_enabled,
-              store_name: domain.woocommerce_enabled ? domain.name : undefined,
-            },
-            googleAnalytics: {
-              measurementId: '',
-              apiSecret: '',
-              connected: domain.ga_enabled
-            }
-          };
-        });
-        
-        setIntegrationState(initialState);
+        await fetchDomains();
         
         // Show success message
         toast({
@@ -965,9 +943,9 @@ export default function IntegrationsPage() {
                             <FormLabel>Store URL</FormLabel>
                             <Input 
                               placeholder="shop.yourdomain.com" 
-                              value={integrationState[domain.domain]?.woocommerce.url}
+                              value={integrationState[domain.domain]?.woocommerce?.url || ''}
                               onChange={(e) => handleWooCommerceChange(domain.domain, 'url', e.target.value)}
-                              isDisabled={integrationState[domain.domain]?.woocommerce.connected}
+                              isDisabled={integrationState[domain.domain]?.woocommerce?.connected}
                             />
                           </FormControl>
                           
@@ -975,9 +953,9 @@ export default function IntegrationsPage() {
                             <FormLabel>Consumer Key</FormLabel>
                             <Input 
                               placeholder="ck_xxxxxxxxxxxxxxxxxxxx" 
-                              value={integrationState[domain.domain]?.woocommerce.key}
+                              value={integrationState[domain.domain]?.woocommerce?.key || ''}
                               onChange={(e) => handleWooCommerceChange(domain.domain, 'key', e.target.value)}
-                              isDisabled={integrationState[domain.domain]?.woocommerce.connected}
+                              isDisabled={integrationState[domain.domain]?.woocommerce?.connected}
                             />
                           </FormControl>
                           
@@ -986,9 +964,9 @@ export default function IntegrationsPage() {
                             <Input 
                               placeholder="cs_xxxxxxxxxxxxxxxxxxxx" 
                               type="password"
-                              value={integrationState[domain.domain]?.woocommerce.secret}
+                              value={integrationState[domain.domain]?.woocommerce?.secret || ''}
                               onChange={(e) => handleWooCommerceChange(domain.domain, 'secret', e.target.value)}
-                              isDisabled={integrationState[domain.domain]?.woocommerce.connected}
+                              isDisabled={integrationState[domain.domain]?.woocommerce?.connected}
                             />
                           </FormControl>
                           
@@ -997,9 +975,9 @@ export default function IntegrationsPage() {
                             isLoading={connectionLoading[domain.domain]}
                             onClick={() => handleConnect(domain.domain, 'woocommerce')}
                             isDisabled={
-                              !integrationState[domain.domain]?.woocommerce.url || 
-                              !integrationState[domain.domain]?.woocommerce.key || 
-                              !integrationState[domain.domain]?.woocommerce.secret
+                              !integrationState[domain.domain]?.woocommerce?.url || 
+                              !integrationState[domain.domain]?.woocommerce?.key || 
+                              !integrationState[domain.domain]?.woocommerce?.secret
                             }
                           >
                             Connect WooCommerce
@@ -1019,7 +997,7 @@ export default function IntegrationsPage() {
                           </Text>
                         </Box>
                         <HStack>
-                          {integrationState[domain.domain]?.googleAnalytics.connected ? (
+                          {integrationState[domain.domain]?.googleAnalytics?.connected ? (
                             <Badge colorScheme="green" p={2} borderRadius="md">
                               Connected
                             </Badge>
@@ -1037,9 +1015,9 @@ export default function IntegrationsPage() {
                         <FormLabel>Measurement ID</FormLabel>
                         <Input 
                           placeholder="G-XXXXXXXXXX" 
-                          value={integrationState[domain.domain]?.googleAnalytics.measurementId}
+                          value={integrationState[domain.domain]?.googleAnalytics?.measurementId || ''}
                           onChange={(e) => handleGoogleAnalyticsChange(domain.domain, 'measurementId', e.target.value)}
-                          isDisabled={integrationState[domain.domain]?.googleAnalytics.connected}
+                          isDisabled={integrationState[domain.domain]?.googleAnalytics?.connected}
                         />
                       </FormControl>
                       
@@ -1048,25 +1026,25 @@ export default function IntegrationsPage() {
                         <Input 
                           placeholder="API Secret from Google Analytics" 
                           type="password"
-                          value={integrationState[domain.domain]?.googleAnalytics.apiSecret}
+                          value={integrationState[domain.domain]?.googleAnalytics?.apiSecret || ''}
                           onChange={(e) => handleGoogleAnalyticsChange(domain.domain, 'apiSecret', e.target.value)}
-                          isDisabled={integrationState[domain.domain]?.googleAnalytics.connected}
+                          isDisabled={integrationState[domain.domain]?.googleAnalytics?.connected}
                         />
                       </FormControl>
                       
                       <Button 
-                        colorScheme={integrationState[domain.domain]?.googleAnalytics.connected ? "red" : "teal"}
-                        onClick={() => integrationState[domain.domain]?.googleAnalytics.connected 
+                        colorScheme={integrationState[domain.domain]?.googleAnalytics?.connected ? "red" : "teal"}
+                        onClick={() => integrationState[domain.domain]?.googleAnalytics?.connected 
                           ? handleDisconnect(domain.domain, 'googleAnalytics')
                           : handleConnect(domain.domain, 'googleAnalytics')
                         }
                         isDisabled={
-                          !integrationState[domain.domain]?.googleAnalytics.connected && 
-                          (!integrationState[domain.domain]?.googleAnalytics.measurementId || 
-                           !integrationState[domain.domain]?.googleAnalytics.apiSecret)
+                          !integrationState[domain.domain]?.googleAnalytics?.connected && 
+                          (!integrationState[domain.domain]?.googleAnalytics?.measurementId || 
+                           !integrationState[domain.domain]?.googleAnalytics?.apiSecret)
                         }
                       >
-                        {integrationState[domain.domain]?.googleAnalytics.connected ? "Disconnect" : "Connect"}
+                        {integrationState[domain.domain]?.googleAnalytics?.connected ? "Disconnect" : "Connect"}
                       </Button>
                     </Stack>
                   </TabPanel>
