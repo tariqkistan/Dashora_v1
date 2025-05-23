@@ -1,8 +1,8 @@
 version = 0.1
 [default.deploy.parameters]
-stack_name = "dashora-analytics"
+stack_name = "dashora-backend"
 resolve_s3 = true
-s3_prefix = "dashora-analytics"
+s3_prefix = "dashora-backend"
 region = "us-east-1"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"

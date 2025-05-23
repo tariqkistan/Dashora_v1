@@ -1,0 +1,9 @@
+{
+    "user_id": {"S": "test-user"},
+    "domain_id": {"S": "your-store-domain.com"},
+    "name": {"S": "Your Store Name"},
+    "wc_consumer_key": {"S": "your-woocommerce-consumer-key"},
+    "wc_consumer_secret": {"S": "your-woocommerce-consumer-secret"},
+    "woocommerce_enabled": {"BOOL": true},
+    "ga_enabled": {"BOOL": false}
+} 

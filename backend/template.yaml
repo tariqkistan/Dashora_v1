@@ -13,10 +13,11 @@ Globals:
       - x86_64
     Environment:
       Variables:
-        METRICS_TABLE_NAME: !Ref MetricsTable
-        DOMAINS_TABLE_NAME: !Ref DomainsTable
-        USERS_TABLE_NAME: !Ref UsersTable
+        METRICS_TABLE_NAME: !Ref DashoraMetricsTable
+        DOMAINS_TABLE_NAME: !Ref DashoraDomainsTable
+        USERS_TABLE_NAME: !Ref DashoraUsersTable
         JWT_SECRET: !Ref JwtSecret
+        STAGE: dev
 
 Parameters:
   JwtSecret:
@@ -26,10 +27,10 @@ Parameters:
 
 Resources:
   # DynamoDB Tables
-  MetricsTable:
+  DashoraMetricsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: dashora-metrics
+      TableName: dashora-metrics-api
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: domain_id
@@ -42,10 +43,10 @@ Resources:
         - AttributeName: timestamp
           KeyType: RANGE
 
-  DomainsTable:
+  DashoraDomainsTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: dashora-domains
+      TableName: dashora-domains-api
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: user_id
@@ -58,10 +59,10 @@ Resources:
         - AttributeName: domain_id
           KeyType: RANGE
 
-  UsersTable:
+  DashoraUsersTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: dashora-users
+      TableName: dashora-users-api
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: user_id
@@ -71,44 +72,47 @@ Resources:
           KeyType: HASH
 
   # Lambda Functions
-  WooCommerceFetcher:
+  DashoraWooCommerceFetcher:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./lambda/woocommerce_fetcher/
-      Handler: app.lambda_handler
+      FunctionName: dashora-api-woocommerce-fetcher
+      CodeUri: ./lambdas/woocommerce_fetcher/
+      Handler: lambda_function.lambda_handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref DomainsTable
+            TableName: !Ref DashoraDomainsTable
       Events:
         ScheduledFetch:
           Type: Schedule
           Properties:
             Schedule: rate(1 hour)
 
-  GoogleAnalyticsFetcher:
+  DashoraGoogleAnalyticsFetcher:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./lambda/ga_fetcher/
-      Handler: app.lambda_handler
+      FunctionName: dashora-api-ga-fetcher
+      CodeUri: ./lambdas/ga_fetcher/
+      Handler: lambda_function.lambda_handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref DomainsTable
+            TableName: !Ref DashoraDomainsTable
       Events:
         ScheduledFetch:
           Type: Schedule
           Properties:
             Schedule: rate(1 hour)
 
-  MetricsProcessor:
+  DashoraMetricsProcessor:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./lambda/metrics_processor/
-      Handler: app.lambda_handler
+      FunctionName: dashora-api-metrics-processor
+      CodeUri: ./lambdas/metrics_processor/
+      Handler: lambda_function.lambda_handler
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref DomainsTable
+            TableName: !Ref DashoraDomainsTable
         - DynamoDBCrudPolicy:
-            TableName: !Ref MetricsTable
+            TableName: !Ref DashoraMetricsTable
       Events:
         ProcessWooCommerceData:
           Type: CloudWatchEvent
@@ -121,7 +125,7 @@ Resources:
               detail:
                 requestContext:
                   functionName:
-                    - !Ref WooCommerceFetcher
+                    - !Ref DashoraWooCommerceFetcher
         ProcessGAData:
           Type: CloudWatchEvent
           Properties:
@@ -133,50 +137,122 @@ Resources:
               detail:
                 requestContext:
                   functionName:
-                    - !Ref GoogleAnalyticsFetcher
+                    - !Ref DashoraGoogleAnalyticsFetcher
 
-  ApiFunction:
+  DashoraApiFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./lambda/api_handler/
-      Handler: app.lambda_handler
+      FunctionName: dashora-api-handler
+      CodeUri: ./lambdas/api_handler/
+      Handler: lambda_function.lambda_handler
+      Layers:
+        - !Ref DashoraDependenciesLayer
       Policies:
         - DynamoDBCrudPolicy:
-            TableName: !Ref DomainsTable
+            TableName: !Ref DashoraDomainsTable
         - DynamoDBCrudPolicy:
-            TableName: !Ref MetricsTable
+            TableName: !Ref DashoraMetricsTable
         - DynamoDBCrudPolicy:
-            TableName: !Ref UsersTable
+            TableName: !Ref DashoraUsersTable
       Events:
-        ApiGateway:
+        # Login endpoint
+        LoginEndpoint:
           Type: Api
           Properties:
-            Path: /{proxy+}
-            Method: ANY
+            RestApiId: !Ref DashoraApiGateway
+            Path: /login
+            Method: POST
+        # Domains endpoint
+        DomainsEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /domains
+            Method: GET
+        # Add domain endpoint
+        AddDomainEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /domains
+            Method: POST
+        # Metrics endpoint
+        MetricsEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /metrics/{domain}
+            Method: GET
+        # Integration endpoints
+        IntegrationGetEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /domains/{domain}/integrations/{type}
+            Method: GET
+        IntegrationPostEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /domains/{domain}/integrations/{type}
+            Method: POST
+        IntegrationDeleteEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /domains/{domain}/integrations/{type}
+            Method: DELETE
+        # Debug and test endpoints
+        TestEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /test
+            Method: GET
+        DebugEndpoint:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashoraApiGateway
+            Path: /debug
+            Method: GET
 
   # API Gateway
-  ApiGateway:
+  DashoraApiGateway:
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
       Cors:
-        AllowMethods: "'*'"
-        AllowHeaders: "'*'"
+        AllowMethods: "'OPTIONS,GET,POST,PUT,DELETE'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
         AllowOrigin: "'*'"
+      Auth:
+        DefaultAuthorizer: NONE
+        AddDefaultAuthorizerToCorsPreflight: false
+
+  # Lambda Layer for Dependencies
+  DashoraDependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: dashora-dependencies
+      Description: Dependencies for Dashora API Lambda functions
+      ContentUri: ./lambdas/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
 
 Outputs:
   ApiEndpoint:
     Description: "API Gateway endpoint URL"
-    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/"
-  WooCommerceFetcher:
+    Value: !Sub "https://${DashoraApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+  WooCommerceFetcherArn:
     Description: "WooCommerce Fetcher Function ARN"
-    Value: !GetAtt WooCommerceFetcher.Arn
-  GoogleAnalyticsFetcher:
+    Value: !GetAtt DashoraWooCommerceFetcher.Arn
+  GoogleAnalyticsFetcherArn:
     Description: "Google Analytics Fetcher Function ARN"
-    Value: !GetAtt GoogleAnalyticsFetcher.Arn
-  MetricsProcessor:
+    Value: !GetAtt DashoraGoogleAnalyticsFetcher.Arn
+  MetricsProcessorArn:
     Description: "Metrics Processor Function ARN"
-    Value: !GetAtt MetricsProcessor.Arn
-  ApiFunction:
+    Value: !GetAtt DashoraMetricsProcessor.Arn
+  ApiFunctionArn:
     Description: "API Handler Function ARN"
-    Value: !GetAtt ApiFunction.Arn 
+    Value: !GetAtt DashoraApiFunction.Arn 

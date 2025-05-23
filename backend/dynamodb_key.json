@@ -1,0 +1,4 @@
+{
+  "user_id": {"S": "test-user"},
+  "domain_id": {"S": "shop.perfectlaser.co.za"}
+} 
