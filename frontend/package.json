@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test-api": "node src/scripts/test-api-connection.js"
   },
   "dependencies": {
     "@chakra-ui/react": "latest",

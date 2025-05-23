@@ -33,8 +33,19 @@ import {
   AlertIcon,
   AlertTitle,
   AlertDescription,
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalFooter,
+  ModalBody,
+  ModalCloseButton,
+  useDisclosure,
+  FormErrorMessage,
+  ButtonGroup,
 } from '@chakra-ui/react';
 import { domainService } from '@/services/api';
+import { AddIcon } from '@chakra-ui/icons';
 
 interface Domain {
   domain: string;
@@ -66,6 +77,21 @@ interface IntegrationState {
   };
 }
 
+interface NewDomainForm {
+  name: string;
+  domain: string;
+  woocommerce: {
+    key: string;
+    secret: string;
+    enabled: boolean;
+  };
+  googleAnalytics: {
+    measurementId: string;
+    apiSecret: string;
+    enabled: boolean;
+  };
+}
+
 export default function IntegrationsPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,12 +100,31 @@ export default function IntegrationsPage() {
   const [integrationState, setIntegrationState] = useState<IntegrationState>({});
   const toast = useToast();
   
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [newDomain, setNewDomain] = useState<NewDomainForm>({
+    name: '',
+    domain: '',
+    woocommerce: {
+      key: '',
+      secret: '',
+      enabled: false
+    },
+    googleAnalytics: {
+      measurementId: '',
+      apiSecret: '',
+      enabled: false
+    }
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
+  
   const bgColor = useColorModeValue('white', '#171923');
   const borderColor = useColorModeValue('gray.200', 'gray.700');
   const textColor = useColorModeValue('gray.600', 'gray.300');
   const headingColor = useColorModeValue('gray.700', 'white');
   const panelBg = useColorModeValue('gray.50', 'gray.800');
   const successBg = useColorModeValue('green.50', 'green.900');
+  const modalBg = useColorModeValue('white', 'gray.800');
   
   useEffect(() => {
     const fetchDomains = async () => {
@@ -330,6 +375,217 @@ export default function IntegrationsPage() {
     }
   };
 
+  const handleNewDomainChange = (field: string, value: string) => {
+    setNewDomain(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Clear error for this field if it exists
+    if (formErrors[field]) {
+      setFormErrors(prev => {
+        const newErrors = {...prev};
+        delete newErrors[field];
+        return newErrors;
+      });
+    }
+  };
+  
+  const handleIntegrationToggle = (integration: 'woocommerce' | 'googleAnalytics', enabled: boolean) => {
+    setNewDomain(prev => ({
+      ...prev,
+      [integration]: {
+        ...prev[integration],
+        enabled
+      }
+    }));
+  };
+  
+  const handleIntegrationFieldChange = (integration: 'woocommerce' | 'googleAnalytics', field: string, value: string) => {
+    setNewDomain(prev => ({
+      ...prev,
+      [integration]: {
+        ...prev[integration],
+        [field]: value
+      }
+    }));
+    
+    // Clear error for this field if it exists
+    const errorKey = `${integration}.${field}`;
+    if (formErrors[errorKey]) {
+      setFormErrors(prev => {
+        const newErrors = {...prev};
+        delete newErrors[errorKey];
+        return newErrors;
+      });
+    }
+  };
+  
+  const validateForm = (): boolean => {
+    const errors: {[key: string]: string} = {};
+    
+    if (!newDomain.name.trim()) {
+      errors.name = 'Store name is required';
+    }
+    
+    if (!newDomain.domain.trim()) {
+      errors.domain = 'Domain is required';
+    } else if (!/^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]\.[a-zA-Z]{2,}$/.test(newDomain.domain.trim())) {
+      errors.domain = 'Please enter a valid domain (e.g., example.com)';
+    }
+    
+    if (newDomain.woocommerce.enabled) {
+      if (!newDomain.woocommerce.key.trim()) {
+        errors['woocommerce.key'] = 'WooCommerce API key is required';
+      }
+      if (!newDomain.woocommerce.secret.trim()) {
+        errors['woocommerce.secret'] = 'WooCommerce API secret is required';
+      }
+    }
+    
+    if (newDomain.googleAnalytics.enabled) {
+      if (!newDomain.googleAnalytics.measurementId.trim()) {
+        errors['googleAnalytics.measurementId'] = 'Google Analytics measurement ID is required';
+      }
+      if (!newDomain.googleAnalytics.apiSecret.trim()) {
+        errors['googleAnalytics.apiSecret'] = 'Google Analytics API secret is required';
+      }
+    }
+    
+    if (!newDomain.woocommerce.enabled && !newDomain.googleAnalytics.enabled) {
+      errors.integration = 'At least one integration must be enabled';
+    }
+    
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+  
+  const handleAddWebsite = async () => {
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    
+    try {
+      // Add domain to the system
+      const result = await domainService.addDomain({
+        name: newDomain.name.trim(),
+        domain: newDomain.domain.trim(),
+        woocommerce_enabled: newDomain.woocommerce.enabled,
+        ga_enabled: newDomain.googleAnalytics.enabled
+      });
+      
+      if (result.success) {
+        // Connect integrations if enabled
+        const domainId = result.domain_id || newDomain.domain.trim();
+        
+        // Connect WooCommerce if enabled
+        if (newDomain.woocommerce.enabled) {
+          try {
+            await domainService.connectIntegration(domainId, 'woocommerce', {
+              domain: newDomain.domain.trim(),
+              consumer_key: newDomain.woocommerce.key.trim(),
+              consumer_secret: newDomain.woocommerce.secret.trim()
+            });
+          } catch (err) {
+            console.error('Error connecting WooCommerce:', err);
+            toast({
+              title: 'WooCommerce Connection Error',
+              description: 'The domain was added but there was an error connecting WooCommerce. Please try connecting it manually.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+          }
+        }
+        
+        // Connect Google Analytics if enabled
+        if (newDomain.googleAnalytics.enabled) {
+          try {
+            await domainService.connectIntegration(domainId, 'googleanalytics', {
+              measurementId: newDomain.googleAnalytics.measurementId.trim(),
+              apiSecret: newDomain.googleAnalytics.apiSecret.trim()
+            });
+          } catch (err) {
+            console.error('Error connecting Google Analytics:', err);
+            toast({
+              title: 'Google Analytics Connection Error',
+              description: 'The domain was added but there was an error connecting Google Analytics. Please try connecting it manually.',
+              status: 'warning',
+              duration: 5000,
+              isClosable: true,
+            });
+          }
+        }
+        
+        // Refresh the domains list
+        const { domains: updatedDomains } = await domainService.getDomains();
+        setDomains(updatedDomains);
+        
+        // Initialize state with existing integration data from domains
+        const initialState: IntegrationState = {};
+        updatedDomains.forEach((domain: Domain) => {
+          initialState[domain.domain] = {
+            woocommerce: {
+              url: domain.domain,
+              key: '',
+              secret: '',
+              connected: domain.woocommerce_enabled,
+              store_name: domain.woocommerce_enabled ? domain.name : undefined,
+            },
+            googleAnalytics: {
+              measurementId: '',
+              apiSecret: '',
+              connected: domain.ga_enabled
+            }
+          };
+        });
+        
+        setIntegrationState(initialState);
+        
+        // Show success message
+        toast({
+          title: 'Website Added Successfully',
+          description: `${newDomain.name} has been added to your dashboard.`,
+          status: 'success',
+          duration: 5000,
+          isClosable: true,
+        });
+        
+        // Reset form and close modal
+        setNewDomain({
+          name: '',
+          domain: '',
+          woocommerce: {
+            key: '',
+            secret: '',
+            enabled: false
+          },
+          googleAnalytics: {
+            measurementId: '',
+            apiSecret: '',
+            enabled: false
+          }
+        });
+        onClose();
+      } else {
+        throw new Error(result.error || 'Unknown error adding domain');
+      }
+    } catch (err: any) {
+      console.error('Error adding domain:', err);
+      toast({
+        title: 'Error Adding Website',
+        description: err.message || 'An error occurred while adding the website. Please try again.',
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box maxW="1400px" mx="auto" py={20} textAlign="center">
@@ -341,9 +597,19 @@ export default function IntegrationsPage() {
 
   return (
     <Box maxW="1400px" mx="auto" py={5} px={{ base: 2, sm: 4, md: 6 }}>
-      <Heading size="lg" mb={6} color={headingColor}>
-        Integrations
-      </Heading>
+      <Flex mb={6} justifyContent="space-between" alignItems="center">
+        <Heading size="lg" color={headingColor}>
+          Integrations
+        </Heading>
+        <Button 
+          leftIcon={<AddIcon />} 
+          colorScheme="teal" 
+          onClick={onOpen}
+          size="md"
+        >
+          Add Website
+        </Button>
+      </Flex>
       
       <Text mb={8} color={textColor}>
         Connect your domains to WooCommerce and Google Analytics to enable data synchronization and comprehensive analytics.
@@ -356,6 +622,138 @@ export default function IntegrationsPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+      
+      <Modal isOpen={isOpen} onClose={onClose} size="lg">
+        <ModalOverlay />
+        <ModalContent bg={modalBg}>
+          <ModalHeader>Add New Website</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Stack spacing={4}>
+              <FormControl isRequired isInvalid={!!formErrors.name}>
+                <FormLabel>Store Name</FormLabel>
+                <Input 
+                  placeholder="My Online Store" 
+                  value={newDomain.name}
+                  onChange={(e) => handleNewDomainChange('name', e.target.value)}
+                />
+                {formErrors.name && <FormErrorMessage>{formErrors.name}</FormErrorMessage>}
+              </FormControl>
+              
+              <FormControl isRequired isInvalid={!!formErrors.domain}>
+                <FormLabel>Domain</FormLabel>
+                <Input 
+                  placeholder="example.com" 
+                  value={newDomain.domain}
+                  onChange={(e) => handleNewDomainChange('domain', e.target.value)}
+                />
+                {formErrors.domain && <FormErrorMessage>{formErrors.domain}</FormErrorMessage>}
+              </FormControl>
+              
+              <Divider my={2} />
+              
+              <FormControl display="flex" alignItems="center" mb={2}>
+                <FormLabel htmlFor="woocommerce-toggle" mb="0">
+                  Enable WooCommerce
+                </FormLabel>
+                <Switch 
+                  id="woocommerce-toggle" 
+                  colorScheme="teal"
+                  isChecked={newDomain.woocommerce.enabled}
+                  onChange={(e) => handleIntegrationToggle('woocommerce', e.target.checked)}
+                />
+              </FormControl>
+              
+              {newDomain.woocommerce.enabled && (
+                <Box pl={4} borderLeft="2px" borderColor="teal.200" py={2}>
+                  <FormControl isRequired isInvalid={!!formErrors['woocommerce.key']} mb={3}>
+                    <FormLabel>WooCommerce API Key</FormLabel>
+                    <Input 
+                      placeholder="ck_xxxxxxxxxxxxxxxxxxxx" 
+                      value={newDomain.woocommerce.key}
+                      onChange={(e) => handleIntegrationFieldChange('woocommerce', 'key', e.target.value)}
+                    />
+                    {formErrors['woocommerce.key'] && <FormErrorMessage>{formErrors['woocommerce.key']}</FormErrorMessage>}
+                  </FormControl>
+                  
+                  <FormControl isRequired isInvalid={!!formErrors['woocommerce.secret']}>
+                    <FormLabel>WooCommerce API Secret</FormLabel>
+                    <Input 
+                      placeholder="cs_xxxxxxxxxxxxxxxxxxxx" 
+                      type="password"
+                      value={newDomain.woocommerce.secret}
+                      onChange={(e) => handleIntegrationFieldChange('woocommerce', 'secret', e.target.value)}
+                    />
+                    {formErrors['woocommerce.secret'] && <FormErrorMessage>{formErrors['woocommerce.secret']}</FormErrorMessage>}
+                  </FormControl>
+                </Box>
+              )}
+              
+              <Divider my={2} />
+              
+              <FormControl display="flex" alignItems="center" mb={2}>
+                <FormLabel htmlFor="ga-toggle" mb="0">
+                  Enable Google Analytics
+                </FormLabel>
+                <Switch 
+                  id="ga-toggle" 
+                  colorScheme="teal"
+                  isChecked={newDomain.googleAnalytics.enabled}
+                  onChange={(e) => handleIntegrationToggle('googleAnalytics', e.target.checked)}
+                />
+              </FormControl>
+              
+              {newDomain.googleAnalytics.enabled && (
+                <Box pl={4} borderLeft="2px" borderColor="teal.200" py={2}>
+                  <FormControl isRequired isInvalid={!!formErrors['googleAnalytics.measurementId']} mb={3}>
+                    <FormLabel>Google Analytics Measurement ID</FormLabel>
+                    <Input 
+                      placeholder="G-XXXXXXXXXX" 
+                      value={newDomain.googleAnalytics.measurementId}
+                      onChange={(e) => handleIntegrationFieldChange('googleAnalytics', 'measurementId', e.target.value)}
+                    />
+                    {formErrors['googleAnalytics.measurementId'] && <FormErrorMessage>{formErrors['googleAnalytics.measurementId']}</FormErrorMessage>}
+                  </FormControl>
+                  
+                  <FormControl isRequired isInvalid={!!formErrors['googleAnalytics.apiSecret']}>
+                    <FormLabel>Google Analytics API Secret</FormLabel>
+                    <Input 
+                      placeholder="API Secret from Google Analytics" 
+                      type="password"
+                      value={newDomain.googleAnalytics.apiSecret}
+                      onChange={(e) => handleIntegrationFieldChange('googleAnalytics', 'apiSecret', e.target.value)}
+                    />
+                    {formErrors['googleAnalytics.apiSecret'] && <FormErrorMessage>{formErrors['googleAnalytics.apiSecret']}</FormErrorMessage>}
+                  </FormControl>
+                </Box>
+              )}
+              
+              {formErrors.integration && (
+                <Alert status="error" borderRadius="md">
+                  <AlertIcon />
+                  <AlertDescription>{formErrors.integration}</AlertDescription>
+                </Alert>
+              )}
+            </Stack>
+          </ModalBody>
+          
+          <ModalFooter>
+            <ButtonGroup spacing={3}>
+              <Button variant="outline" onClick={onClose} isDisabled={isSubmitting}>
+                Cancel
+              </Button>
+              <Button 
+                colorScheme="teal" 
+                onClick={handleAddWebsite} 
+                isLoading={isSubmitting}
+                loadingText="Adding..."
+              >
+                Add Website
+              </Button>
+            </ButtonGroup>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
       
       {domains.length === 0 ? (
         <Card bg={bgColor} borderColor={borderColor} shadow="sm">
