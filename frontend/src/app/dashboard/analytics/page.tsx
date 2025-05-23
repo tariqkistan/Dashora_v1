@@ -78,6 +78,21 @@ interface WooCommerceData {
     currency: string;
     from_orders: number;
   };
+  daily_revenue: {
+    amount: number;
+    currency: string;
+    orders: number;
+  };
+  weekly_revenue: {
+    amount: number;
+    currency: string;
+    orders: number;
+  };
+  monthly_revenue: {
+    amount: number;
+    currency: string;
+    orders: number;
+  };
   currency: string;
   top_products: Array<{
     id: number;
@@ -85,6 +100,8 @@ interface WooCommerceData {
     image: string;
     total_sales: number;
   }>;
+  time_period?: string;
+  last_updated?: string;
 }
 
 interface MetricCardProps {
@@ -211,6 +228,7 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle?: string 
 export default function AnalyticsPage() {
   const [domains, setDomains] = useState<Domain[]>([]);
   const [selectedDomain, setSelectedDomain] = useState<string>('');
+  const [selectedTimePeriod, setSelectedTimePeriod] = useState<string>('all');
   const [metrics, setMetrics] = useState<Metric[]>([]);
   const [wooCommerceData, setWooCommerceData] = useState<WooCommerceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -270,7 +288,11 @@ export default function AnalyticsPage() {
 
       try {
         setWooCommerceLoading(true);
-        const data = await domainService.getIntegrationDetails(selectedDomain, 'woocommerce');
+        // Add time period parameter to the API call
+        const data = await domainService.getIntegrationDetails(
+          selectedDomain, 
+          `woocommerce?period=${selectedTimePeriod}`
+        );
         setWooCommerceData(data);
       } catch (err: any) {
         console.error('Failed to fetch WooCommerce data:', err);
@@ -289,7 +311,7 @@ export default function AnalyticsPage() {
     if (domains.length > 0) {
       fetchWooCommerceData();
     }
-  }, [selectedDomain, domains]);
+  }, [selectedDomain, selectedTimePeriod, domains]);
 
   // Calculate trends
   const calculateTrend = (metricName: keyof Metric) => {
@@ -419,6 +441,27 @@ export default function AnalyticsPage() {
                 subtitle={domains.find(d => d.domain === selectedDomain)?.name?.toUpperCase() || selectedDomain.toUpperCase()}
               />
               
+              {/* Time Period Selector */}
+              <Flex mb={4} justify="space-between" align="center">
+                <Text fontSize="sm" color={useColorModeValue('gray.600', 'gray.400')}>
+                  Filter by time period:
+                </Text>
+                <FormControl maxW="200px">
+                  <Select
+                    value={selectedTimePeriod}
+                    onChange={(e) => setSelectedTimePeriod(e.target.value)}
+                    size="sm"
+                    bg={useColorModeValue('white', '#171923')}
+                    borderColor={useColorModeValue('gray.200', 'gray.600')}
+                  >
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">Last 7 Days</option>
+                    <option value="month">Last 30 Days</option>
+                  </Select>
+                </FormControl>
+              </Flex>
+              
               {wooCommerceLoading ? (
                 <Flex justify="center" py={8}>
                   <Spinner size="lg" color="teal.200" />
@@ -440,23 +483,23 @@ export default function AnalyticsPage() {
                         <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={6}>
                           <MetricCard
                             title="Today's Revenue"
-                            value={`${wooCommerceData.current_revenue.currency} 0.00`}
-                            subtitle="Last 24 hours"
+                            value={`${wooCommerceData.daily_revenue.currency} ${wooCommerceData.daily_revenue.amount.toFixed(2)}`}
+                            subtitle={`${wooCommerceData.daily_revenue.orders} orders today`}
                           />
                           <MetricCard
                             title="Weekly Revenue"
-                            value={`${wooCommerceData.current_revenue.currency} 0.00`}
-                            subtitle="Last 7 days"
+                            value={`${wooCommerceData.weekly_revenue.currency} ${wooCommerceData.weekly_revenue.amount.toFixed(2)}`}
+                            subtitle={`${wooCommerceData.weekly_revenue.orders} orders this week`}
                           />
                           <MetricCard
-                            title="Today's Orders"
-                            value="0"
-                            subtitle="Last 24 hours"
+                            title="Monthly Revenue"
+                            value={`${wooCommerceData.monthly_revenue.currency} ${wooCommerceData.monthly_revenue.amount.toFixed(2)}`}
+                            subtitle={`${wooCommerceData.monthly_revenue.orders} orders this month`}
                           />
                           <MetricCard
                             title="Total Products"
-                            value="0"
-                            subtitle="Total products"
+                            value={wooCommerceData.top_products?.length || 0}
+                            subtitle="Products available"
                           />
                         </SimpleGrid>
                         

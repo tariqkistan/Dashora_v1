@@ -708,15 +708,20 @@ def handle_woocommerce_disconnect(event, user_id):
         }
 
 def handle_woocommerce_details(event, user_id):
-    """Handle WooCommerce integration details request"""
+    """Handle WooCommerce integration details request with time filtering"""
     try:
         # Parse path parameters
         path_params = event.get('pathParameters', {}) or {}
         domain = path_params.get('domain')
         
-        print(f"WooCommerce details request for domain: {domain}")
+        # Parse query parameters for time filtering
+        query_params = event.get('queryStringParameters') or {}
+        time_period = query_params.get('period', 'all')  # all, today, week, month
+        
+        print(f"WooCommerce details request for domain: {domain}, period: {time_period}")
         print(f"User ID: {user_id}")
         print(f"Path params: {path_params}")
+        print(f"Query params: {query_params}")
         
         if not domain:
             return {
@@ -726,9 +731,7 @@ def handle_woocommerce_details(event, user_id):
                     'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
                     'Access-Control-Allow-Methods': 'OPTIONS,POST,GET,PUT,DELETE'
                 },
-                'body': json.dumps({
-                    'error': 'Domain parameter is required'
-                })
+                'body': json.dumps({'error': 'Domain parameter is required'})
             }
         
         # Connect to DynamoDB
@@ -827,11 +830,25 @@ def handle_woocommerce_details(event, user_id):
             # Initialize default values
             total_orders = 0
             current_revenue = 0.0
+            daily_revenue = 0.0
+            weekly_revenue = 0.0
+            monthly_revenue = 0.0
+            daily_orders = 0
+            weekly_orders = 0
+            monthly_orders = 0
             currency = 'ZAR'
             recent_orders_count = 0
             top_products = []
             store_currency = currency
             store_country = 'Unknown'
+            
+            # Calculate date ranges for filtering
+            now = datetime.utcnow()
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start = today_start - timedelta(days=7)
+            month_start = today_start - timedelta(days=30)
+            
+            print(f"Date ranges - Today: {today_start}, Week: {week_start}, Month: {month_start}")
             
             # Function to make API calls with timeout
             def make_api_call(url, call_params, timeout=15):
@@ -855,10 +872,10 @@ def handle_woocommerce_details(event, user_id):
                 total_orders = int(orders_response.headers.get('X-WP-Total', 0))
                 print(f"Total orders: {total_orders}")
             
-            # 2. Get current revenue (completed orders) - limit to 50 for speed
+            # 2. Get current revenue (completed orders) - limit to 100 for better time analysis
             revenue_params = {
                 **params, 
-                'per_page': 50,  # Reduced from 100 for faster response
+                'per_page': 100,  # Increased to get more orders for time analysis
                 'status': 'completed',
                 'orderby': 'date',
                 'order': 'desc'
@@ -874,11 +891,36 @@ def handle_woocommerce_details(event, user_id):
                         current_revenue += order_total
                         recent_orders_count += 1
                         
+                        # Parse order date for time filtering
+                        order_date_str = order.get('date_created', '')
+                        if order_date_str:
+                            try:
+                                # Parse WooCommerce date format (ISO 8601)
+                                order_date = datetime.fromisoformat(order_date_str.replace('Z', '+00:00'))
+                                order_date_utc = order_date.replace(tzinfo=None)  # Convert to naive UTC
+                                
+                                # Check if order falls within time periods
+                                if order_date_utc >= today_start:
+                                    daily_revenue += order_total
+                                    daily_orders += 1
+                                
+                                if order_date_utc >= week_start:
+                                    weekly_revenue += order_total
+                                    weekly_orders += 1
+                                
+                                if order_date_utc >= month_start:
+                                    monthly_revenue += order_total
+                                    monthly_orders += 1
+                                    
+                            except Exception as date_error:
+                                print(f"Error parsing order date {order_date_str}: {str(date_error)}")
+                        
                         # Get currency from first order
                         if currency == 'ZAR' and order.get('currency'):
                             currency = order.get('currency')
                     
-                    print(f"Current revenue from {recent_orders_count} recent completed orders: {current_revenue} {currency}")
+                    print(f"Revenue calculated - Total: {current_revenue}, Daily: {daily_revenue}, Weekly: {weekly_revenue}, Monthly: {monthly_revenue}")
+                    print(f"Orders counted - Total: {recent_orders_count}, Daily: {daily_orders}, Weekly: {weekly_orders}, Monthly: {monthly_orders}")
                 except Exception as e:
                     print(f"Error processing orders data: {str(e)}")
             
@@ -934,7 +976,7 @@ def handle_woocommerce_details(event, user_id):
                 print(f"Error getting store settings (non-critical): {str(e)}")
                 store_currency = currency  # Use currency from orders
             
-            # Prepare the response with all the data
+            # Prepare the response with all the data including time-based metrics
             woocommerce_data = {
                 'store_name': domain_data.get('name', domain.split('.')[0].capitalize()),
                 'connected': True,
@@ -944,12 +986,28 @@ def handle_woocommerce_details(event, user_id):
                     'currency': store_currency,
                     'from_orders': recent_orders_count
                 },
+                'daily_revenue': {
+                    'amount': round(daily_revenue, 2),
+                    'currency': store_currency,
+                    'orders': daily_orders
+                },
+                'weekly_revenue': {
+                    'amount': round(weekly_revenue, 2),
+                    'currency': store_currency,
+                    'orders': weekly_orders
+                },
+                'monthly_revenue': {
+                    'amount': round(monthly_revenue, 2),
+                    'currency': store_currency,
+                    'orders': monthly_orders
+                },
                 'top_products': top_products,
                 'store_info': {
                     'currency': store_currency,
                     'country': store_country,
                     'domain': domain
                 },
+                'time_period': time_period,
                 'last_updated': datetime.utcnow().isoformat()
             }
             
