@@ -86,16 +86,16 @@ def get_domain_credentials(domain_id):
                 'wc_consumer_secret': domain_data.get('wc_consumer_secret')
             }
         
-        print(f"No credentials found for domain: {domain_id}")
-        # For development, return mock credentials
-        if os.environ.get('STAGE') == 'dev':
-            print("Using mock credentials in development mode")
-            return {
-                'url': f"https://{domain_id}",
-                'wc_consumer_key': 'mock_consumer_key',
-                'wc_consumer_secret': 'mock_consumer_secret'
-            }
-        return None
+            print(f"No credentials found for domain: {domain_id}")
+            # For development, return mock credentials
+            if os.environ.get('STAGE') == 'dev':
+                print("Using mock credentials in development mode")
+                return {
+                    'url': f"https://{domain_id}",
+                    'wc_consumer_key': 'mock_consumer_key',
+                    'wc_consumer_secret': 'mock_consumer_secret'
+                }
+            return None
         
     except Exception as e:
         print(f"Error retrieving domain credentials: {str(e)}")

@@ -98,14 +98,14 @@ interface IntegrationState {
 interface NewDomainForm {
   name: string;
   domain: string;
-  woocommerce: {
-    key: string;
-    secret: string;
+    woocommerce: {
+      key: string;
+      secret: string;
     enabled: boolean;
-  };
-  googleAnalytics: {
-    measurementId: string;
-    apiSecret: string;
+    };
+    googleAnalytics: {
+      measurementId: string;
+      apiSecret: string;
     enabled: boolean;
   };
 }
@@ -144,32 +144,32 @@ export default function IntegrationsPage() {
   const successBg = useColorModeValue('green.50', 'green.900');
   const modalBg = useColorModeValue('white', 'gray.800');
   
-  const fetchDomains = async () => {
-    try {
+    const fetchDomains = async () => {
+      try {
       setLoading(true);
-      const { domains } = await domainService.getDomains();
-      setDomains(domains);
-      
-      // Initialize state with existing integration data from domains
-      const initialState: IntegrationState = {};
-      domains.forEach((domain: Domain) => {
-        initialState[domain.domain] = {
-          woocommerce: {
+        const { domains } = await domainService.getDomains();
+        setDomains(domains);
+        
+        // Initialize state with existing integration data from domains
+        const initialState: IntegrationState = {};
+        domains.forEach((domain: Domain) => {
+          initialState[domain.domain] = {
+            woocommerce: {
             url: domain.domain,
-            key: '',
-            secret: '',
+              key: '',
+              secret: '',
             connected: domain.woocommerce_enabled,
             store_name: domain.woocommerce_enabled ? domain.name : undefined,
-          },
-          googleAnalytics: {
-            measurementId: '',
-            apiSecret: '',
-            connected: domain.ga_enabled
-          }
-        };
-      });
-      
-      setIntegrationState(initialState);
+            },
+            googleAnalytics: {
+              measurementId: '',
+              apiSecret: '',
+              connected: domain.ga_enabled
+            }
+          };
+        });
+        
+        setIntegrationState(initialState);
       
       // Define mock domains that should be skipped for real API calls
       const mockDomains = ['example.com', 'test-store.com'];
@@ -211,12 +211,12 @@ export default function IntegrationsPage() {
           }
         }
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to fetch domains');
-    } finally {
-      setLoading(false);
-    }
-  };
+      } catch (err: any) {
+        setError(err.response?.data?.error || 'Failed to fetch domains');
+      } finally {
+        setLoading(false);
+      }
+    };
 
   useEffect(() => {
     fetchDomains();
@@ -418,27 +418,27 @@ export default function IntegrationsPage() {
       handleConnectWooCommerce(domain);
     } else {
       // Handle Google Analytics connection
-      const integration = integrationState[domain][integrationType];
-      
+    const integration = integrationState[domain][integrationType];
+    
       // Simulated GA connection for now
-      setIntegrationState(prev => ({
-        ...prev,
-        [domain]: {
-          ...prev[domain],
-          [integrationType]: {
-            ...prev[domain][integrationType],
-            connected: true
-          }
+    setIntegrationState(prev => ({
+      ...prev,
+      [domain]: {
+        ...prev[domain],
+        [integrationType]: {
+          ...prev[domain][integrationType],
+          connected: true
         }
-      }));
-      
-      toast({
+      }
+    }));
+    
+    toast({
         title: 'Google Analytics Connected',
         description: `Successfully connected ${domain} to Google Analytics`,
-        status: 'success',
-        duration: 5000,
-        isClosable: true,
-      });
+      status: 'success',
+      duration: 5000,
+      isClosable: true,
+    });
     }
   };
   
@@ -447,24 +447,24 @@ export default function IntegrationsPage() {
       handleDisconnectWooCommerce(domain);
     } else {
       // Handle Google Analytics disconnection
-      setIntegrationState(prev => ({
-        ...prev,
-        [domain]: {
-          ...prev[domain],
-          [integrationType]: {
-            ...prev[domain][integrationType],
-            connected: false
-          }
+    setIntegrationState(prev => ({
+      ...prev,
+      [domain]: {
+        ...prev[domain],
+        [integrationType]: {
+          ...prev[domain][integrationType],
+          connected: false
         }
-      }));
-      
-      toast({
+      }
+    }));
+    
+    toast({
         title: 'Google Analytics Disconnected',
         description: `Successfully disconnected ${domain} from Google Analytics`,
-        status: 'info',
-        duration: 5000,
-        isClosable: true,
-      });
+      status: 'info',
+      duration: 5000,
+      isClosable: true,
+    });
     }
   };
 
@@ -697,8 +697,8 @@ export default function IntegrationsPage() {
     <Box maxW="1400px" mx="auto" py={5} px={{ base: 2, sm: 4, md: 6 }}>
       <Flex mb={6} justifyContent="space-between" alignItems="center">
         <Heading size="lg" color={headingColor}>
-          Integrations
-        </Heading>
+        Integrations
+      </Heading>
         <Button 
           leftIcon={<AddIcon />} 
           colorScheme="teal" 
@@ -1014,49 +1014,49 @@ export default function IntegrationsPage() {
                         </Box>
                       ) : (
                         <>
-                          <FormControl id={`${domain.domain}-woocommerce-url`}>
-                            <FormLabel>Store URL</FormLabel>
-                            <Input 
+                      <FormControl id={`${domain.domain}-woocommerce-url`}>
+                        <FormLabel>Store URL</FormLabel>
+                        <Input 
                               placeholder="shop.yourdomain.com" 
                               value={integrationState[domain.domain]?.woocommerce?.url || ''}
-                              onChange={(e) => handleWooCommerceChange(domain.domain, 'url', e.target.value)}
+                          onChange={(e) => handleWooCommerceChange(domain.domain, 'url', e.target.value)}
                               isDisabled={integrationState[domain.domain]?.woocommerce?.connected}
-                            />
-                          </FormControl>
-                          
-                          <FormControl id={`${domain.domain}-woocommerce-key`}>
-                            <FormLabel>Consumer Key</FormLabel>
-                            <Input 
-                              placeholder="ck_xxxxxxxxxxxxxxxxxxxx" 
+                        />
+                      </FormControl>
+                      
+                      <FormControl id={`${domain.domain}-woocommerce-key`}>
+                        <FormLabel>Consumer Key</FormLabel>
+                        <Input 
+                          placeholder="ck_xxxxxxxxxxxxxxxxxxxx" 
                               value={integrationState[domain.domain]?.woocommerce?.key || ''}
-                              onChange={(e) => handleWooCommerceChange(domain.domain, 'key', e.target.value)}
+                          onChange={(e) => handleWooCommerceChange(domain.domain, 'key', e.target.value)}
                               isDisabled={integrationState[domain.domain]?.woocommerce?.connected}
-                            />
-                          </FormControl>
-                          
-                          <FormControl id={`${domain.domain}-woocommerce-secret`}>
-                            <FormLabel>Consumer Secret</FormLabel>
-                            <Input 
-                              placeholder="cs_xxxxxxxxxxxxxxxxxxxx" 
-                              type="password"
+                        />
+                      </FormControl>
+                      
+                      <FormControl id={`${domain.domain}-woocommerce-secret`}>
+                        <FormLabel>Consumer Secret</FormLabel>
+                        <Input 
+                          placeholder="cs_xxxxxxxxxxxxxxxxxxxx" 
+                          type="password"
                               value={integrationState[domain.domain]?.woocommerce?.secret || ''}
-                              onChange={(e) => handleWooCommerceChange(domain.domain, 'secret', e.target.value)}
+                          onChange={(e) => handleWooCommerceChange(domain.domain, 'secret', e.target.value)}
                               isDisabled={integrationState[domain.domain]?.woocommerce?.connected}
-                            />
-                          </FormControl>
-                          
-                          <Button 
+                        />
+                      </FormControl>
+                      
+                      <Button 
                             colorScheme="teal"
                             isLoading={connectionLoading[domain.domain]}
                             onClick={() => handleConnect(domain.domain, 'woocommerce')}
-                            isDisabled={
+                        isDisabled={
                               !integrationState[domain.domain]?.woocommerce?.url || 
                               !integrationState[domain.domain]?.woocommerce?.key || 
                               !integrationState[domain.domain]?.woocommerce?.secret
-                            }
-                          >
+                        }
+                      >
                             Connect WooCommerce
-                          </Button>
+                      </Button>
                         </>
                       )}
                     </Stack>

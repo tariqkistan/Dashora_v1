@@ -166,17 +166,17 @@ def handle_get_domains(event, user_id):
         
         # Always query real domains from database first
         try:
-            response = domains_table.query(
-                KeyConditionExpression=Key('user_id').eq(user_id)
-            )
-            
-            for item in response['Items']:
-                domains.append({
-                    'domain': item.get('domain_id'),
-                    'name': item.get('name', ''),
-                    'woocommerce_enabled': item.get('woocommerce_enabled', False),
-                    'ga_enabled': item.get('ga_enabled', False)
-                })
+        response = domains_table.query(
+            KeyConditionExpression=Key('user_id').eq(user_id)
+        )
+        
+        for item in response['Items']:
+            domains.append({
+                'domain': item.get('domain_id'),
+                'name': item.get('name', ''),
+                'woocommerce_enabled': item.get('woocommerce_enabled', False),
+                'ga_enabled': item.get('ga_enabled', False)
+            })
             
             print(f"Found {len(domains)} real domains from database")
         except Exception as e:
@@ -303,30 +303,30 @@ def handle_get_metrics(event, user_id):
                 # Move to next day
                 current_time += 86400  # seconds in a day
         else:
-            # Connect to DynamoDB
-            dynamodb = boto3.resource('dynamodb')
-            metrics_table = dynamodb.Table(METRICS_TABLE)
-            
+        # Connect to DynamoDB
+        dynamodb = boto3.resource('dynamodb')
+        metrics_table = dynamodb.Table(METRICS_TABLE)
+        
             # Create domain_id 
-            domain_id = f"{domain}"
+        domain_id = f"{domain}"
             print(f"Looking up domain_id: {domain_id}")
-            
-            # Query metrics for domain and time range
-            response = metrics_table.query(
-                KeyConditionExpression=Key('domain_id').eq(domain_id) & 
-                                    Key('timestamp').between(str(start_time), str(end_time))
-            )
-            
-            metrics = []
-            for item in response['Items']:
-                metrics.append({
-                    'domain': domain,
-                    'timestamp': int(item.get('timestamp')),
-                    'pageviews': item.get('pageviews', 0),
-                    'visitors': item.get('visitors', 0),
-                    'orders': item.get('orders', 0),
-                    'revenue': item.get('revenue', 0)
-                })
+        
+        # Query metrics for domain and time range
+        response = metrics_table.query(
+            KeyConditionExpression=Key('domain_id').eq(domain_id) & 
+                                  Key('timestamp').between(str(start_time), str(end_time))
+        )
+        
+        metrics = []
+        for item in response['Items']:
+            metrics.append({
+                'domain': domain,
+                'timestamp': int(item.get('timestamp')),
+                'pageviews': item.get('pageviews', 0),
+                'visitors': item.get('visitors', 0),
+                'orders': item.get('orders', 0),
+                'revenue': item.get('revenue', 0)
+            })
         
         print(f"Found {len(metrics)} metrics records")
         
@@ -376,7 +376,7 @@ def verify_token(event):
         
         # Handle both Bearer token and raw token formats
         if auth_header.startswith('Bearer '):
-            token = auth_header.split(' ')[1]
+        token = auth_header.split(' ')[1]
             print(f"Extracted Bearer token: {token[:10]}...")
         else:
             # If it's just the raw token
@@ -395,15 +395,15 @@ def verify_token(event):
         
         # Verify token
         try:
-            payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=['HS256'])
             print(f"Token decoded successfully: {payload}")
-            
-            # Check if token is expired
-            if payload.get('exp', 0) < time.time():
+        
+        # Check if token is expired
+        if payload.get('exp', 0) < time.time():
                 print("Token is expired")
-                return None
-                
-            return payload
+            return None
+            
+        return payload
         except jwt.ExpiredSignatureError:
             print("Token signature has expired")
             return None
@@ -411,7 +411,7 @@ def verify_token(event):
             print(f"Invalid token error: {str(e)}")
             print(f"Token being decoded: {token}")
             return None
-        except Exception as e:
+    except Exception as e:
             print(f"Unexpected error decoding token: {str(e)}")
             print(f"Token being decoded: {token}")
             import traceback
@@ -1332,13 +1332,13 @@ def lambda_handler(event, context):
                 print("Development mode: Using fallback test user")
                 payload = {'user_id': 'test-user', 'email': 'test@example.com'}
             else:
-                return {
-                    'statusCode': 401,
-                    'headers': headers,
-                    'body': json.dumps({
-                        'error': 'Unauthorized'
-                    })
-                }
+            return {
+                'statusCode': 401,
+                'headers': headers,
+                'body': json.dumps({
+                    'error': 'Unauthorized'
+                })
+            }
         
         user_id = payload.get('user_id')
         print(f"Authenticated user_id: {user_id}")
@@ -1347,9 +1347,9 @@ def lambda_handler(event, context):
         if path == '/domains':
             if http_method == 'GET':
                 print("Handling get domains request")
-                response = handle_get_domains(event, user_id)
-                response['headers'] = {**headers, **response.get('headers', {})}
-                return response
+            response = handle_get_domains(event, user_id)
+            response['headers'] = {**headers, **response.get('headers', {})}
+            return response
             elif http_method == 'POST':
                 print("Handling add domain request")
                 response = handle_add_domain(event, user_id)
@@ -1452,8 +1452,8 @@ def lambda_handler(event, context):
                 elif http_method == 'GET':
                     print("Handling WooCommerce details request")
                     response = handle_woocommerce_details(event, user_id)
-                    response['headers'] = {**headers, **response.get('headers', {})}
-                    return response
+            response['headers'] = {**headers, **response.get('headers', {})}
+            return response
         
         # Return 404 for unknown endpoints
         print(f"Unknown endpoint: {path}")

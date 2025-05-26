@@ -183,9 +183,12 @@ export const domainService = {
     }
   },
   
-  getIntegrationDetails: async (domain: string, type: string) => {
+  getIntegrationDetails: async (domain: string, type: string, period?: string) => {
     try {
-      const response = await api.get(`/domains/${domain}/integrations/${type}`);
+      const params = period ? { period } : {};
+      console.log(`API call: GET /domains/${domain}/integrations/${type}`, { params });
+      const response = await api.get(`/domains/${domain}/integrations/${type}`, { params });
+      console.log(`API response for ${domain}/${type}:`, response.data);
       return response.data;
     } catch (error) {
       // Log the error for debugging but re-throw it so the UI can handle it properly
@@ -196,7 +199,7 @@ export const domainService = {
   
   connectIntegration: async (domain: string, type: string, credentials: any) => {
     try {
-      const response = await api.post(`/domains/${domain}/integrations/${type}`, credentials);
+    const response = await api.post(`/domains/${domain}/integrations/${type}`, credentials);
       return { 
         success: true,
         ...response.data
@@ -226,7 +229,7 @@ export const domainService = {
   
   disconnectIntegration: async (domain: string, type: string) => {
     try {
-      const response = await api.delete(`/domains/${domain}/integrations/${type}`);
+    const response = await api.delete(`/domains/${domain}/integrations/${type}`);
       return { 
         success: true,
         ...response.data
