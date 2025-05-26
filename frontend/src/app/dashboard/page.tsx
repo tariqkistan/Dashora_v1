@@ -251,7 +251,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [wooCommerceData, setWooCommerceData] = useState<WooCommerceData | null>(null);
   const [wooCommerceLoading, setWooCommerceLoading] = useState(false);
-  const [timeRange, setTimeRange] = useState('week'); // Default to past 7 days
+  const [timeRange, setTimeRange] = useState('weekly'); // Default to weekly
   
   // Cache key for localStorage
   const getCacheKey = (domain: string, range: string) => `woocommerce_${domain}_${range}`;
@@ -308,13 +308,11 @@ export default function DashboardPage() {
   // Helper function to get time range display text
   const getTimeRangeText = (range: string) => {
     switch (range) {
-      case 'today': return 'Past 2 days';
-      case 'week': return 'Past 7 days';
-      case 'month': return 'Past 30 days';
-      case 'quarter': return 'Past 90 days';
-      case 'year': return 'Previous month';
-      case 'all': return 'All time';
-      default: return 'Past 7 days';
+      case 'daily': return 'Daily';
+      case 'weekly': return 'Weekly';
+      case 'monthly': return 'Monthly';
+      case 'current': return 'Current Period';
+      default: return 'Weekly';
     }
   };
 
@@ -393,33 +391,15 @@ export default function DashboardPage() {
         console.log('Time period from API:', details.time_period);
         
         // Map the API response to our WooCommerceData interface based on time range
-        let revenue_amount = 0;
-        let orders_count = 0;
+        // Now we directly use the API response field that matches our time range
+        const revenueField = `${timeRange}_revenue`; // e.g., 'daily_revenue', 'weekly_revenue', etc.
+        const selectedRevenueData = details[revenueField] || {};
         
-        // Use the appropriate data based on time range
-        switch (timeRange) {
-          case 'today':
-            revenue_amount = details.daily_revenue?.amount || 0;
-            orders_count = details.daily_revenue?.orders || 0;
-            break;
-          case 'week':
-            revenue_amount = details.weekly_revenue?.amount || 0;
-            orders_count = details.weekly_revenue?.orders || 0;
-            break;
-          case 'month':
-            revenue_amount = details.monthly_revenue?.amount || 0;
-            orders_count = details.monthly_revenue?.orders || 0;
-            break;
-          case 'quarter':
-          case 'year':
-          case 'all':
-            revenue_amount = details.current_revenue?.amount || details.monthly_revenue?.amount || 0;
-            orders_count = details.current_revenue?.from_orders || details.monthly_revenue?.orders || 0;
-            break;
-          default:
-            revenue_amount = details.weekly_revenue?.amount || 0;
-            orders_count = details.weekly_revenue?.orders || 0;
-        }
+        const revenue_amount = selectedRevenueData.amount || 0;
+        const orders_count = selectedRevenueData.orders || selectedRevenueData.from_orders || 0;
+        
+        console.log(`Using ${revenueField} from API:`, selectedRevenueData);
+        console.log(`Mapped data for ${timeRange}:`, { revenue_amount, orders_count });
         
         const wooCommerceData: WooCommerceData = {
           store_name: details.store_name || domain,
@@ -437,8 +417,6 @@ export default function DashboardPage() {
           })) || [],
           recent_orders: [] // Recent orders would need to be added to the API response
         };
-        
-        console.log(`Mapped data for ${timeRange}:`, { revenue_amount, orders_count });
         
         // If we have zero revenue but the store is connected, show some realistic data
         // This could mean the store has no recent sales, so let's show historical or sample data
@@ -596,12 +574,10 @@ export default function DashboardPage() {
                     bg={useColorModeValue('white', 'gray.800')}
                     borderColor={useColorModeValue('gray.300', 'gray.600')}
                   >
-                    <option value="today">Past 2 days</option>
-                    <option value="week">Past 7 days</option>
-                    <option value="month">Past 30 days</option>
-                    <option value="quarter">Past 90 days</option>
-                    <option value="year">Previous month</option>
-                    <option value="all">All time</option>
+                    <option value="daily">Daily Revenue</option>
+                    <option value="weekly">Weekly Revenue</option>
+                    <option value="monthly">Monthly Revenue</option>
+                    <option value="current">Current Revenue</option>
                   </Select>
                 </FormControl>
               </Box>
@@ -614,46 +590,46 @@ export default function DashboardPage() {
                   // Show loading state for WooCommerce metrics
                   <>
                     <MetricCard
-                      title="Revenue"
+                      title={`${getTimeRangeText(timeRange)} Revenue`}
                       value="Loading..."
-                      subtitle={getTimeRangeText(timeRange)}
+                      subtitle="Fetching data..."
                     />
                     <MetricCard
-                      title="Total Revenue"
+                      title={`${getTimeRangeText(timeRange)} Orders`}
                       value="Loading..."
-                      subtitle={getTimeRangeText(timeRange)}
-                    />
-                    <MetricCard
-                      title="Orders"
-                      value="Loading..."
-                      subtitle={getTimeRangeText(timeRange)}
+                      subtitle="Fetching data..."
                     />
                     <MetricCard
                       title="Total Products"
                       value="Loading..."
-                      subtitle="Loading..."
+                      subtitle="Fetching data..."
+                    />
+                    <MetricCard
+                      title="Store Status"
+                      value="Loading..."
+                      subtitle="Fetching data..."
                     />
                   </>
                 ) : wooCommerceData ? (
                 <>
                   <MetricCard
-                    title="Revenue"
+                    title={`${getTimeRangeText(timeRange)} Revenue`}
                     value={`R${wooCommerceData.revenue_today.toFixed(2)}`}
-                    subtitle={getTimeRangeText(timeRange)}
+                    subtitle={wooCommerceData.store_name}
                   />
                   <MetricCard
-                    title="Total Revenue"
-                    value={`R${wooCommerceData.revenue_week.toFixed(2)}`}
-                    subtitle={getTimeRangeText(timeRange)}
-                  />
-                  <MetricCard
-                    title="Orders"
+                    title={`${getTimeRangeText(timeRange)} Orders`}
                     value={wooCommerceData.orders_today}
-                    subtitle={getTimeRangeText(timeRange)}
+                    subtitle="Orders placed"
                   />
                   <MetricCard
                     title="Total Products"
                     value={wooCommerceData.product_count}
+                    subtitle="In catalog"
+                  />
+                  <MetricCard
+                    title="Store Status"
+                    value="Active"
                     subtitle={wooCommerceData.store_name}
                   />
                 </>
@@ -661,24 +637,24 @@ export default function DashboardPage() {
                   // Show error state or empty state for WooCommerce
                   <>
                     <MetricCard
-                      title="Revenue"
+                      title={`${getTimeRangeText(timeRange)} Revenue`}
                       value="No data"
-                      subtitle={getTimeRangeText(timeRange)}
+                      subtitle="Check integration"
                     />
                     <MetricCard
-                      title="Total Revenue"
+                      title={`${getTimeRangeText(timeRange)} Orders`}
                       value="No data"
-                      subtitle={getTimeRangeText(timeRange)}
-                    />
-                    <MetricCard
-                      title="Orders"
-                      value="No data"
-                      subtitle={getTimeRangeText(timeRange)}
+                      subtitle="Check integration"
                     />
                     <MetricCard
                       title="Total Products"
                       value="No data"
-                      subtitle="WooCommerce"
+                      subtitle="Check integration"
+                    />
+                    <MetricCard
+                      title="Store Status"
+                      value="No data"
+                      subtitle="Check integration"
                     />
                   </>
                 )
